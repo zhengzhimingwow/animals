@@ -1,0 +1,7 @@
+.env
+.env.*
+*.log
+*.pyc
+__pycache__/
+client/.godot/
+server/build/

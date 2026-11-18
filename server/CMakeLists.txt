@@ -1,0 +1,18 @@
+cmake_minimum_required(VERSION 3.22)
+project(ferry_online LANGUAGES CXX)
+
+find_package(Boost 1.74 CONFIG REQUIRED)
+find_package(Lua 5.4 EXACT REQUIRED)
+set(MONGOC_DEFAULT_IMPORTED_LIBRARY_TYPE SHARED CACHE STRING "MongoDB C driver library type")
+find_package(mongoc 2 CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
+find_package(Threads REQUIRED)
+
+add_executable(ferry-server main.cpp runtime.cpp)
+target_compile_features(ferry-server PRIVATE cxx_std_20)
+target_include_directories(ferry-server PRIVATE ${LUA_INCLUDE_DIR})
+target_link_libraries(ferry-server PRIVATE Boost::boost ${LUA_LIBRARIES}
+    mongoc::mongoc nlohmann_json::nlohmann_json Threads::Threads)
+if(MSVC)
+    target_compile_options(ferry-server PRIVATE /utf-8)
+endif()
