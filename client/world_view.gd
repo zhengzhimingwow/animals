@@ -2,193 +2,337 @@ extends Control
 
 signal tile_pressed(tile: Vector2i)
 
+const Grid = preload("res://grid_projection.gd")
+const Walk = preload("res://walk_motion.gd")
+const MODEL_ROOT := "res://assets/models/"
+const FIGURE_MODELS := {"apothecary": "rabbit", "boatman": "ox", "reed_snake": "snake"}
+
 var tiles: Array = []
 var features: Dictionary = {}
 var players: Dictionary = {}
 var monster: Dictionary = {}
 var my_id := ""
 var ink_font: Font
-var sprites: Array[Texture2D] = []
-var hover := Vector2i(-1, -1)
-var positions: Dictionary = {}
 
-const PATH := [Color("#b2a183"), Color("#bbad91"), Color("#a99a7e"), Color("#afa286")]
-const MOSS := [Color("#56664e"), Color("#617156"), Color("#51614b"), Color("#65745a")]
+var _backdrop: Texture2D
+var _scene_window: SubViewport
+var _actor_root: Node3D
+var _camera: Camera3D
+var _ferry: Node3D
+var _hover_marker: Node3D
+var _player_marker: Node3D
+var _hover: Vector2i = Grid.OUTSIDE
+var _walks: Dictionary = {}
+var _heroes: Dictionary = {}
+var _figures: Dictionary = {}
+var _render_scale := 1.0
+var _framed_size := Vector2.ZERO
+var _framed_dimensions := Vector2i.ZERO
 
 func _ready() -> void:
-    custom_minimum_size = Vector2(660, 470)
+    texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
     mouse_filter = Control.MOUSE_FILTER_STOP
     mouse_exited.connect(_clear_hover)
-    resized.connect(queue_redraw)
-    var atlas: Texture2D = load("res://assets/animal-atlas.png")
-    if atlas:
-        var image := atlas.get_image()
-        var crops := [
-            Rect2i(22, 72, 510, 598), Rect2i(643, 35, 345, 636),
-            Rect2i(1073, 57, 554, 615), Rect2i(1690, 156, 421, 505)
-        ]
-        for rectangle in crops:
-            sprites.append(ImageTexture.create_from_image(image.get_region(rectangle)))
+    resized.connect(_fit_camera)
+    _backdrop = load("res://assets/ferry-basin.png")
+    _build_scene()
+    _fit_camera()
 
-func set_world(snapshot: Dictionary) -> void:
-    players = snapshot.get("players", {})
-    monster = snapshot.get("monster", {})
-    for id in positions.keys():
-        if not players.has(id):
-            positions.erase(id)
-    for id in players:
-        if not positions.has(id):
-            positions[id] = Vector2(_coords(players[id]))
+func _build_scene() -> void:
+    _scene_window = SubViewport.new()
+    _scene_window.name = "ModeledFerry"
+    _scene_window.transparent_bg = true
+    _scene_window.own_world_3d = true
+    var adapter := RenderingServer.get_video_adapter_name().to_lower()
+    if adapter.contains("llvmpipe") or adapter.contains("swiftshader"):
+        _render_scale = 0.76
+    _scene_window.msaa_3d = Viewport.MSAA_4X if _render_scale == 1.0 else Viewport.MSAA_DISABLED
+    _scene_window.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+    add_child(_scene_window)
+
+    var stage := Node3D.new()
+    _scene_window.add_child(stage)
+    _camera = Camera3D.new()
+    _camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+    _camera.keep_aspect = Camera3D.KEEP_HEIGHT
+    _camera.near = 0.1
+    _camera.far = 70.0
+    stage.add_child(_camera)
+    _camera.make_current()
+    _light_scene(stage)
+
+    _ferry = _model("ferry")
+    if _ferry:
+        stage.add_child(_ferry)
+    _actor_root = Node3D.new()
+    _actor_root.name = "Actors"
+    stage.add_child(_actor_root)
+
+    _hover_marker = _tile_marker(Color(0.97, 0.88, 0.62, 0.64))
+    _player_marker = _tile_marker(Color(1.0, 0.78, 0.40, 0.94))
+    stage.add_child(_hover_marker)
+    stage.add_child(_player_marker)
+
+func _light_scene(stage: Node3D) -> void:
+    var atmosphere := WorldEnvironment.new()
+    var world_light := Environment.new()
+    world_light.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+    world_light.ambient_light_color = Color("#d7e2dc")
+    world_light.ambient_light_energy = 0.40
+    atmosphere.environment = world_light
+    stage.add_child(atmosphere)
+    var sun := DirectionalLight3D.new()
+    sun.rotation_degrees = Vector3(-53, -36, 0)
+    sun.light_color = Color("#fff5e5")
+    sun.light_energy = 0.54
+    sun.shadow_enabled = true
+    sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+    sun.directional_shadow_max_distance = 29.0
+    stage.add_child(sun)
+    var fill := DirectionalLight3D.new()
+    fill.rotation_degrees = Vector3(-18, 138, 0)
+    fill.light_color = Color("#c4e1e2")
+    fill.light_energy = 0.16
+    stage.add_child(fill)
+
+func _model(model_name: String) -> Node3D:
+    var path := MODEL_ROOT + model_name + ".glb"
+    if not ResourceLoader.exists(path, "PackedScene"):
+        return null
+    var scene: PackedScene = load(path)
+    return scene.instantiate() as Node3D
+
+func _fit_camera() -> void:
+    if not _camera or size.x < 2.0 or size.y < 2.0:
+        return
+    var dimensions := _dimensions()
+    if dimensions == Vector2i.ZERO:
+        dimensions = Vector2i(12, 8)
+    if size == _framed_size and dimensions == _framed_dimensions:
+        return
+    _framed_size = size
+    _framed_dimensions = dimensions
+    var backing_size := size * _render_scale
+    _scene_window.size = Vector2i(maxi(2, roundi(backing_size.x)), maxi(2, roundi(backing_size.y)))
+    var pixel_size := size
+    var fit := Grid.fit(pixel_size, dimensions)
+    var yaw := atan(-Grid.ROW.x)
+    var pitch := asin(Grid.ROW.y)
+    var meters_to_pixels := fit.x.x / cos(yaw)
+    _camera.size = pixel_size.y / meters_to_pixels
+    var center := Vector3(dimensions.x * 0.5, 0.0, dimensions.y * 0.5)
+    var direction := Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch))
+    _camera.position = center + direction * 21.0
+    _camera.look_at(center, Vector3.UP)
+    var target_screen := fit * (Vector2(dimensions) * 0.5)
+    var shift := target_screen - pixel_size * 0.5
+    _camera.position += _camera.transform.basis.y * (shift.y / meters_to_pixels)
     queue_redraw()
 
-func _process(delta: float) -> void:
+func set_world(snapshot: Dictionary, predicted: Vector2i = Grid.OUTSIDE) -> void:
+    players = snapshot.get("players", {})
+    monster = snapshot.get("monster", {})
+    _fit_camera()
+    _sync_fixed_actors()
+    for id in _walks.keys():
+        if not players.has(id):
+            _walks.erase(id)
+            if _heroes.has(id):
+                _heroes[id].queue_free()
+                _heroes.erase(id)
     for id in players:
-        var destination := Vector2(_coords(players[id]))
-        if positions[id].distance_to(destination) > 0.005:
-            positions[id] = positions[id].lerp(destination, minf(1.0, delta * 18.0))
-            queue_redraw()
+        var cell := predicted if id == my_id and predicted != Grid.OUTSIDE else _coords(players[id])
+        if _walks.has(id):
+            _walks[id].observe(cell)
+        else:
+            _walks[id] = Walk.new(cell)
+            var model := _model("tiger")
+            if model:
+                _actor_root.add_child(model)
+                _heroes[id] = model
+                model.position = _ground(Vector2(cell))
+                _animate_hero(model, false)
+    _update_markers()
+    queue_redraw()
+
+func preview_step(cell: Vector2i) -> void:
+    if _walks.has(my_id):
+        _walks[my_id].observe(cell)
+
+func correct_step(cell: Vector2i) -> void:
+    if _walks.has(my_id):
+        _walks[my_id].correct(cell)
+
+func face_local(direction: Vector2i) -> void:
+    if _walks.has(my_id) and not _walks[my_id].is_walking():
+        _walks[my_id].direction = direction
+
+func _sync_fixed_actors() -> void:
+    for id in _figures.keys():
+        if not features.has(id):
+            _figures[id].queue_free()
+            _figures.erase(id)
+    for id in FIGURE_MODELS:
+        if not features.has(id):
+            continue
+        if not _figures.has(id):
+            var figure := _model(FIGURE_MODELS[id])
+            if not figure:
+                continue
+            _actor_root.add_child(figure)
+            figure.rotation.y = 0.30
+            _figures[id] = figure
+        _figures[id].position = _ground(Vector2(_coords(features[id])))
+    if _figures.has("reed_snake"):
+        _figures["reed_snake"].visible = monster.get("alive", false)
+
+func _animation_player(model: Node3D) -> AnimationPlayer:
+    return model.find_child("AnimationPlayer", true, false) as AnimationPlayer
+
+func _animate_hero(model: Node3D, walking: bool) -> void:
+    var animation := _animation_player(model)
+    var clip := "walk" if walking else "idle"
+    if not animation or not animation.has_animation(clip) or animation.current_animation == clip:
+        return
+    var animation_clip := animation.get_animation(clip)
+    animation_clip.loop_mode = Animation.LOOP_LINEAR
+    animation.speed_scale = minf(2.4, animation_clip.length / (Walk.STEP_SECONDS * 2.0)) if walking else 1.0
+    animation.play(clip, 0.045 if walking else 0.07)
+
+func _process(delta: float) -> void:
+    var moved := false
+    for id in _walks:
+        var walk: Walk = _walks[id]
+        if walk.advance(delta):
+            moved = true
+        if _heroes.has(id):
+            var model: Node3D = _heroes[id]
+            model.position = _ground(walk.position)
+            var yaw := atan2(float(walk.direction.x), float(walk.direction.y))
+            model.rotation.y = lerp_angle(model.rotation.y, yaw, 1.0 - exp(-28.0 * delta))
+            _animate_hero(model, walk.wants_walk())
+    if moved:
+        queue_redraw()
 
 func _coords(data: Dictionary) -> Vector2i:
     return Vector2i(int(data["x"]), int(data["y"]))
 
-func _board() -> Rect2:
+func _ground(cell: Vector2) -> Vector3:
+    return Vector3(cell.x - 0.5, 0.0, cell.y - 0.5)
+
+func _dimensions() -> Vector2i:
     if tiles.is_empty():
-        return Rect2()
-    var dimensions := Vector2(String(tiles[0]).length(), tiles.size())
-    var scale_factor := floorf(minf((size.x - 18) / dimensions.x, (size.y - 18) / dimensions.y))
-    return Rect2((size - dimensions * scale_factor) * 0.5, dimensions * scale_factor)
+        return Vector2i.ZERO
+    return Vector2i(String(tiles[0]).length(), tiles.size())
 
 func _gui_input(event: InputEvent) -> void:
-    var board := _board()
-    if board.size.x <= 0:
+    var dimensions := _dimensions()
+    if dimensions == Vector2i.ZERO or not event is InputEventMouse:
         return
-    var local_mouse := get_local_mouse_position()
-    var cell := board.size.y / tiles.size()
-    if event is InputEventMouseMotion:
-        hover = Vector2i(((local_mouse - board.position) / cell).floor()) + Vector2i.ONE if board.has_point(local_mouse) else Vector2i(-1, -1)
-        queue_redraw()
-    if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed and board.has_point(local_mouse):
-        tile_pressed.emit(Vector2i(((local_mouse - board.position) / cell).floor()) + Vector2i.ONE)
-        accept_event()
+    var picked := Grid.pick(Grid.fit(size, dimensions), dimensions, event.position)
+    if event is InputEventMouseMotion and _hover != picked:
+        _hover = picked
+        _update_markers()
+    if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+        var figure_tile := _pick_figure(event.position)
+        if figure_tile != Grid.OUTSIDE:
+            picked = figure_tile
+        if picked != Grid.OUTSIDE:
+            tile_pressed.emit(picked)
+            accept_event()
+
+func _pick_figure(pointer: Vector2) -> Vector2i:
+    var result := Grid.OUTSIDE
+    var nearest := -INF
+    for id in _figures:
+        var model: Node3D = _figures[id]
+        if not model.visible:
+            continue
+        var feet := _screen(model.position)
+        var head := _screen(model.position + Vector3.UP * (0.79 if id == "reed_snake" else 1.29))
+        var half_width := clampf((feet.y - head.y) * 0.32, 11.0, 38.0)
+        var bounds := Rect2(Vector2(feet.x - half_width, head.y), Vector2(half_width * 2.0, feet.y - head.y + 7.0))
+        if bounds.has_point(pointer) and feet.y > nearest:
+            nearest = feet.y
+            result = _coords(features[id])
+    return result
 
 func _clear_hover() -> void:
-    hover = Vector2i(-1, -1)
-    queue_redraw()
+    _hover = Grid.OUTSIDE
+    _update_markers()
+
+func _tile_marker(color: Color) -> Node3D:
+    var marker := Node3D.new()
+    marker.hide()
+    var material := StandardMaterial3D.new()
+    material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+    material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+    material.albedo_color = color
+    for side in [Vector2(0.0, -0.43), Vector2(0.43, 0.0), Vector2(0.0, 0.43), Vector2(-0.43, 0.0)]:
+        var edge := MeshInstance3D.new()
+        var strip := BoxMesh.new()
+        strip.size = Vector3(0.88, 0.008, 0.025) if side.x == 0.0 else Vector3(0.025, 0.008, 0.88)
+        edge.mesh = strip
+        edge.material_override = material
+        edge.position = Vector3(side.x, 0.0, side.y)
+        edge.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+        marker.add_child(edge)
+    return marker
+
+func _update_markers() -> void:
+    if not _hover_marker or not _player_marker:
+        return
+    var dimensions := _dimensions()
+    var walkable := false
+    if _hover.x > 0 and _hover.y > 0 and _hover.x <= dimensions.x and _hover.y <= dimensions.y:
+        walkable = String(tiles[_hover.y - 1]).substr(_hover.x - 1, 1) in [".", ",", "D"]
+    _hover_marker.visible = walkable
+    if walkable:
+        _hover_marker.position = _ground(Vector2(_hover)) + Vector3.UP * 0.025
+    _player_marker.visible = players.has(my_id)
+    if _player_marker.visible:
+        _player_marker.position = _ground(Vector2(_coords(players[my_id]))) + Vector3.UP * 0.035
 
 func _draw() -> void:
-    var board := _board()
-    if board.size.x <= 0:
+    if _dimensions() == Vector2i.ZERO:
         return
-    var cell := board.size.y / tiles.size()
-    draw_rect(board.grow(4), Color("#101b16"))
-    for y in range(tiles.size()):
-        var row := String(tiles[y])
-        for x in range(row.length()):
-            var position := board.position + Vector2(x, y) * cell
-            var rectangle := Rect2(position, Vector2.ONE * cell)
-            _paint_tile(row.substr(x, 1), rectangle, x, y)
-    var tower := board.position + Vector2(1.0, 0.34) * cell
-    _roof(tower, cell * 4.85, cell * 0.7)
-    _roof(board.position + Vector2(0.07, 7.66) * cell, cell * 4.5, cell * 0.51)
+    if _backdrop:
+        var image_size := _backdrop.get_size()
+        var scale_factor := maxf(size.x / image_size.x, size.y / image_size.y)
+        if scale_factor > 0.0:
+            var shown := size / scale_factor
+            draw_texture_rect_region(_backdrop, Rect2(Vector2.ZERO, size), Rect2((image_size - shown) * 0.5, shown),
+                Color("#c2c5a7"))
+    else:
+        draw_rect(Rect2(Vector2.ZERO, size), Color("#536c5f"))
+    if _scene_window:
+        draw_texture_rect(_scene_window.get_texture(), Rect2(Vector2.ZERO, size), false)
+    _draw_labels()
 
-    if hover.x >= 1:
-        var highlight := board.position + Vector2(hover - Vector2i.ONE) * cell
-        draw_rect(Rect2(highlight + Vector2(2, 2), Vector2.ONE * (cell - 4)), Color(0.96, 0.79, 0.44, 0.57), false, 2)
-    if players.has(my_id):
-        var own := board.position + (Vector2(_coords(players[my_id])) - Vector2.ONE) * cell
-        draw_rect(Rect2(own + Vector2.ONE * 3, Vector2.ONE * (cell - 6)), Color("#e8bf73"), false, 2)
+func _screen(world: Vector3) -> Vector2:
+    return _camera.unproject_position(world) * (size / Vector2(_scene_window.size))
 
-    var actors: Array = []
+func _draw_labels() -> void:
     for id in features:
-        var info: Dictionary = features[id]
         if id == "reed_snake" and not monster.get("alive", false):
             continue
-        actors.append({"id": id, "position": Vector2(_coords(info)), "label": info["label"], "is_player": false})
+        var point := _ground(Vector2(_coords(features[id])))
+        _draw_name(features[id]["label"], _screen(point))
+        if id == "reed_snake":
+            var bar := Rect2(_screen(point + Vector3.UP * 0.69) - Vector2(15, 6), Vector2(30, 4))
+            draw_rect(bar, Color("#382c24"))
+            var fraction := clampf(float(monster.get("hp", 0)) / 3.0, 0.0, 1.0)
+            draw_rect(Rect2(bar.position, Vector2(bar.size.x * fraction, bar.size.y)), Color("#cc7b53"))
     for id in players:
-        actors.append({"id": id, "position": positions[id], "label": "你" if id == my_id else id, "is_player": true})
-    actors.sort_custom(func(a, b): return a["position"].y < b["position"].y)
-    for actor in actors:
-        _paint_actor(actor, board.position, cell)
-    draw_rect(board.grow(3), Color("#766449"), false, 2)
+        if _walks.has(id):
+            _draw_name("你" if id == my_id else id, _screen(_ground(_walks[id].position)))
 
-func _paint_tile(tile: String, rect: Rect2, x: int, y: int) -> void:
-    var p := rect.position
-    var c := rect.size.x
-    var shade_index := posmod(x * 7 + y * 11 + x * y, 4)
-    if tile == ".":
-        draw_rect(rect, PATH[shade_index])
-        draw_rect(rect.grow(-1), Color(0.92, 0.87, 0.69, 0.26), false, 1)
-        for detail in range(5):
-            var offset := Vector2(posmod(x * 29 + y * 3 + detail * 137, 89), posmod(y * 11 + x * 13 + detail * 31, 79)) / 100.0
-            draw_line(p + (offset + Vector2(0.05, 0.12)) * c, p + (offset + Vector2(0.11, 0.12)) * c, Color(0.34, 0.35, 0.27, 0.18), 1)
-    elif tile == "~":
-        var greens := [Color("#31605c"), Color("#386761"), Color("#3b6d64"), Color("#315d58")]
-        draw_rect(rect, greens[shade_index])
-        for n in range(4):
-            var start := p + Vector2(0.11 + 0.07 * posmod(x + n, 4), 0.15 + n * 0.20) * c
-            draw_line(start, start + Vector2((0.36 + 0.09 * n) * c, 0), Color(0.66, 0.82, 0.70, 0.16), 1.3, true)
-    elif tile == "D":
-        draw_rect(rect, Color("#71543b"))
-        for n in range(7):
-            var board := Rect2(p + Vector2(c * 0.08, n * c / 7.0), Vector2(c * 0.84, c / 7.0 - 1))
-            draw_rect(board, Color("#a78357"))
-            draw_line(board.position, board.position + Vector2(board.size.x, 0), Color("#c39d69"), 1, true)
-    else:
-        draw_rect(rect, MOSS[shade_index].darkened(0.28 if tile == "#" else 0.0))
-        for n in range(5):
-            var point := p + Vector2(posmod((n + 2) * 41 + x * 13, 92), posmod(n * 23 + y * 9, 91)) * c / 100.0
-            draw_line(point, point + Vector2(0.05, -0.13) * c, Color("#879469"), 1.25, true)
-            draw_line(point, point + Vector2(-0.035, -0.09) * c, Color("#4b5e41"), 1.25, true)
-        if tile == "#":
-            var shade := Color("#293e32")
-            draw_circle(p + Vector2(c * 0.28, c * 0.58), c * 0.15, shade)
-            draw_circle(p + Vector2(c * 0.47, c * 0.48), c * 0.17, shade.lightened(0.1))
-            draw_circle(p + Vector2(c * 0.66, c * 0.65), c * 0.15, shade)
-
-func _roof(p: Vector2, width: float, height: float) -> void:
-    draw_rect(Rect2(p + Vector2(3, 5), Vector2(width, height + 6)), Color("#293329"))
-    draw_rect(Rect2(p, Vector2(width, height)), Color("#55594f"))
-    for n in range(int(width / 10)):
-        var rib := p + Vector2(8 + n * 10, 0)
-        draw_line(rib, rib + Vector2(-3, height), Color("#797b6e"), 1.1, true)
-    draw_line(p, p + Vector2(width, 0), Color("#a19d85"), 2)
-    draw_line(p + Vector2(0, height), p + Vector2(width, height), Color("#a88c5d"), 2)
-    for offset in [0.24, 0.77]:
-        var lantern := p + Vector2(width * offset, height * 1.08)
-        draw_circle(lantern, 9, Color(0.92, 0.59, 0.29, 0.19))
-        draw_circle(lantern, 4.3, Color("#f0be6e"))
-
-func _paint_actor(actor: Dictionary, origin: Vector2, cell: float) -> void:
-    var position: Vector2 = actor["position"]
-    var center := origin + (position - Vector2(0.5, 0.5)) * cell
-    var id: String = actor["id"]
-    var sprite_index := -1
-    if actor["is_player"]:
-        sprite_index = 0
-    else:
-        sprite_index = {"apothecary": 1, "boatman": 2, "reed_snake": 3}.get(id, -1)
-    var feet := center + Vector2(0, cell * 0.31)
-    var shadow := PackedVector2Array()
-    for n in range(20):
-        var angle := TAU * n / 20
-        shadow.append(feet + Vector2(cos(angle) * cell * 0.27, sin(angle) * cell * 0.08))
-    draw_colored_polygon(shadow, Color(0.08, 0.10, 0.07, 0.43))
-    if sprite_index >= 0 and sprite_index < sprites.size():
-        var texture := sprites[sprite_index]
-        var height := cell * (0.71 if id == "reed_snake" else 0.99)
-        var width := height * texture.get_size().aspect()
-        var tint := Color.WHITE if id == my_id or not actor["is_player"] else Color("#d4d9ff")
-        draw_texture_rect(texture, Rect2(feet - Vector2(width * 0.5, height), Vector2(width, height)), false, tint)
-    else:
-        draw_rect(Rect2(feet - Vector2(cell * 0.24, cell * 0.35), Vector2(cell * 0.48, cell * 0.30)), Color("#947048"))
-        draw_rect(Rect2(feet - Vector2(cell * 0.24, cell * 0.35), Vector2(cell * 0.48, cell * 0.30)), Color("#e1b77c"), false, 2)
-    if ink_font:
-        var title: String = actor["label"]
-        var name_size := ink_font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, 12)
-        var label_at := Vector2(feet.x - name_size.x * 0.5, feet.y + 14)
-        draw_rect(Rect2(label_at - Vector2(4, 11), Vector2(name_size.x + 8, 15)), Color(0.08, 0.12, 0.09, 0.85))
-        draw_string(ink_font, label_at, title, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("#f4e4c1"))
-    if id == "reed_snake":
-        var bar := Rect2(center - Vector2(cell * 0.28, cell * 0.49), Vector2(cell * 0.56, 4))
-        draw_rect(bar, Color("#302725"))
-        draw_rect(Rect2(bar.position, Vector2(bar.size.x * float(monster.get("hp", 0)) / 3.0, 4)), Color("#c87959"))
+func _draw_name(title: String, ground: Vector2) -> void:
+    if not ink_font:
+        return
+    var font_size := clampi(int(size.y * 0.018), 11, 16)
+    var text_width := ink_font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+    var baseline := ground + Vector2(-text_width * 0.5, font_size + 4)
+    draw_rect(Rect2(baseline - Vector2(5, font_size), Vector2(text_width + 10, font_size + 5)),
+        Color(0.10, 0.15, 0.11, 0.86))
+    draw_string(ink_font, baseline, title, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color("#f1e2b4"))

@@ -1,6 +1,13 @@
 extends Control
 
 const GridView = preload("res://world_view.gd")
+const GridInput = preload("res://grid_input.gd")
+const MOVE_KEYS := {
+    KEY_A: Vector2i.LEFT, KEY_LEFT: Vector2i.LEFT,
+    KEY_D: Vector2i.RIGHT, KEY_RIGHT: Vector2i.RIGHT,
+    KEY_W: Vector2i.UP, KEY_UP: Vector2i.UP,
+    KEY_S: Vector2i.DOWN, KEY_DOWN: Vector2i.DOWN,
+}
 const GOLD := Color("#e5bd77")
 const PAPER := Color("#e9dec9")
 const MUTE := Color("#a6b4a2")
@@ -31,12 +38,11 @@ var token_field: LineEdit
 var connection_message: Label
 var link_button: Button
 var world_status: Label
-var quest_status: Label
-var inventory: Label
 var dialogue_title: Label
 var dialogue_body: Label
-var activity: Label
-var movement_clock := 0.0
+var _movement := GridInput.new()
+var _approach_target := ""
+var _sent_commands: Array[String] = []
 var connect_clock := 0.0
 var body_font: Font
 
@@ -48,6 +54,7 @@ func _ready() -> void:
     theme = shared_theme
     _build_world()
     _build_login()
+    get_window().focus_exited.connect(_clear_input)
     var default_url := OS.get_environment("FERRY_URL")
     var default_token := OS.get_environment("FERRY_TOKEN")
     for arg in OS.get_cmdline_user_args():
@@ -87,67 +94,60 @@ func _text(container: Container, value: String, font_size: int, ink: Color) -> L
     label.add_theme_font_size_override("font_size", font_size)
     label.add_theme_color_override("font_color", ink)
     label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    label.mouse_filter = Control.MOUSE_FILTER_IGNORE
     container.add_child(label)
     return label
 
-func _spacer(container: Container, height: float) -> void:
-    var space := Control.new()
-    space.custom_minimum_size.y = height
-    container.add_child(space)
+func _hud_panel() -> PanelContainer:
+    var panel := PanelContainer.new()
+    var style := _card_style()
+    style.bg_color = Color(0.075, 0.115, 0.09, 0.88)
+    style.content_margin_left = 16
+    style.content_margin_right = 16
+    style.content_margin_top = 10
+    style.content_margin_bottom = 10
+    panel.add_theme_stylebox_override("panel", style)
+    panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    add_child(panel)
+    return panel
 
 func _build_world() -> void:
-    var margin := MarginContainer.new()
-    margin.add_theme_constant_override("margin_left", 30)
-    margin.add_theme_constant_override("margin_right", 30)
-    margin.add_theme_constant_override("margin_top", 18)
-    margin.add_theme_constant_override("margin_bottom", 19)
-    add_child(margin)
-    margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    var layout := VBoxContainer.new()
-    layout.add_theme_constant_override("separation", 11)
-    margin.add_child(layout)
-    _text(layout, "溪桥渡", 34, GOLD)
-    world_status = _text(layout, "等待进入江湖", 15, MUTE)
-
-    var body := HBoxContainer.new()
-    body.add_theme_constant_override("separation", 17)
-    body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    layout.add_child(body)
-    view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     view.ink_font = body_font
     view.tile_pressed.connect(_on_tile)
-    body.add_child(view)
-    var panel := PanelContainer.new()
-    panel.custom_minimum_size.x = 290
-    panel.add_theme_stylebox_override("panel", _card_style())
-    body.add_child(panel)
-    var quest_column := VBoxContainer.new()
-    quest_column.add_theme_constant_override("separation", 7)
-    panel.add_child(quest_column)
-    _text(quest_column, "渡口丢药", 23, GOLD)
-    quest_status = _text(quest_column, QUESTS["new"], 16, PAPER)
-    _spacer(quest_column, 13)
-    _text(quest_column, "行囊", 19, GOLD)
-    inventory = _text(quest_column, "铜钱 0  ·  蛇胆 0", 16, PAPER)
-    _spacer(quest_column, 13)
-    _text(quest_column, "见闻", 19, GOLD)
-    activity = _text(quest_column, "沿着河岸走，留意可调查的东西。", 15, MUTE)
+    add_child(view)
+    view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
-    var dialogue := PanelContainer.new()
-    dialogue.add_theme_stylebox_override("panel", _card_style())
-    dialogue.custom_minimum_size.y = 104
-    layout.add_child(dialogue)
+    var location := _hud_panel()
+    location.position = Vector2(22, 20)
+    var location_stack := VBoxContainer.new()
+    location_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    location.add_child(location_stack)
+    _text(location_stack, "溪桥渡", 25, GOLD).autowrap_mode = TextServer.AUTOWRAP_OFF
+    world_status = _text(location_stack, "等待进入江湖", 14, MUTE)
+    world_status.autowrap_mode = TextServer.AUTOWRAP_OFF
+
+    var dialogue := _hud_panel()
+    dialogue.anchor_right = 0.70
+    dialogue.anchor_top = 1.0
+    dialogue.anchor_bottom = 1.0
+    dialogue.offset_left = 22
+    dialogue.offset_top = -18
+    dialogue.offset_bottom = -18
+    dialogue.grow_vertical = Control.GROW_DIRECTION_BEGIN
     var dialogue_stack := VBoxContainer.new()
+    dialogue_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
     dialogue.add_child(dialogue_stack)
-    dialogue_title = _text(dialogue_stack, "初到渡口", 16, GOLD)
-    dialogue_body = _text(dialogue_stack, "用方向键或 WASD 走格。E 交谈或调查，空格攻击，鼠标也可点相邻格。", 16, PAPER)
+    dialogue_title = _text(dialogue_stack, "", 16, GOLD)
+    dialogue_title.hide()
+    dialogue_body = _text(dialogue_stack, "", 16, PAPER)
+    _text(dialogue_stack, "方向键 / WASD 走格　左键寻路　E 互动　空格攻击", 13, MUTE)
 
 func _build_login() -> void:
     login = Control.new()
     add_child(login)
     login.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     var image := TextureRect.new()
-    image.texture = load("res://assets/ferry-grid-concept.png")
+    image.texture = load("res://assets/ferry-basin.png")
     image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
     image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
     image.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -221,6 +221,9 @@ func _connection_failed(message: String) -> void:
     socket = null
     my_id = ""
     pending_token = ""
+    _clear_input()
+    _movement = GridInput.new()
+    _sent_commands.clear()
     login.show()
     link_button.disabled = false
     connection_message.text = message
@@ -251,89 +254,134 @@ func _process(delta: float) -> void:
             _apply(message)
     if my_id.is_empty():
         return
-    movement_clock -= delta
-    if movement_clock > 0:
-        return
-    var step := Vector2i.ZERO
-    if Input.is_physical_key_pressed(KEY_A) or Input.is_action_pressed("ui_left"):
-        step = Vector2i.LEFT
-    elif Input.is_physical_key_pressed(KEY_D) or Input.is_action_pressed("ui_right"):
-        step = Vector2i.RIGHT
-    elif Input.is_physical_key_pressed(KEY_W) or Input.is_action_pressed("ui_up"):
-        step = Vector2i.UP
-    elif Input.is_physical_key_pressed(KEY_S) or Input.is_action_pressed("ui_down"):
-        step = Vector2i.DOWN
-    if step != Vector2i.ZERO:
-        _move(step)
+    _pump_movement(Time.get_ticks_msec())
 
-func _send(message: Dictionary) -> void:
-    if socket and socket.get_ready_state() == WebSocketPeer.STATE_OPEN:
-        socket.send(JSON.stringify(message).to_utf8_buffer(), WebSocketPeer.WRITE_MODE_TEXT)
+func _send(message: Dictionary) -> bool:
+    if not socket or socket.get_ready_state() != WebSocketPeer.STATE_OPEN or _sent_commands.size() >= 24:
+        return false
+    if socket.send(JSON.stringify(message).to_utf8_buffer(), WebSocketPeer.WRITE_MODE_TEXT) != OK:
+        return false
+    if message["type"] != "login":
+        _sent_commands.push_back(message["type"])
+    return true
 
 func _apply(message: Dictionary) -> void:
-    match message.get("type"):
+    var kind: String = message.get("type", "")
+    var reply_to := ""
+    # The server replies to each command in order. Snapshots may arrive in between.
+    if kind in ["moved", "dialogue", "hit", "error"] and not _sent_commands.is_empty():
+        reply_to = _sent_commands.pop_front()
+    match kind:
         "joined":
             my_id = message["id"]
+            _movement = GridInput.new()
+            _sent_commands.clear()
+            _approach_target = ""
             var map_info: Dictionary = message["map"]
             view.my_id = my_id
             view.tiles = map_info["tiles"]
             view.features = map_info["features"]
             view.set_world({})
-            _private_state(message["player"])
             login.hide()
             link_button.disabled = false
-            dialogue_title.text = "初到渡口"
-            dialogue_body.text = "方向键或 WASD 走格，E 交谈或调查，空格攻击。也可以点击相邻格。"
+            _show_dialogue("", QUESTS.get(message["player"]["quest"], ""))
         "world":
-            view.set_world(message)
-            world_status.text = "多人世界   ·   渡口在线 %d 人" % view.players.size()
+            var own: Dictionary = message["players"].get(my_id, {})
+            if not own.is_empty():
+                var cell := Vector2i(int(own["x"]), int(own["y"]))
+                if _movement.observe(cell):
+                    view.correct_step(cell)
+            view.set_world(message, _movement.pending)
+            world_status.text = "%d 人在线" % view.players.size()
         "dialogue":
-            dialogue_title.text = message["speaker"]
-            dialogue_body.text = message["text"]
-            _private_state(message["player"])
+            _show_dialogue(message["speaker"], message["text"])
         "hit":
-            _private_state(message["player"])
             if int(message["hp"]) == 0:
-                activity.text = "击退芦滩蛇，拿到一枚蛇胆。"
+                _show_dialogue("", "击退芦滩蛇，拿到一枚蛇胆。")
             else:
-                activity.text = "击中芦滩蛇，剩余 %d 点体力。" % int(message["hp"])
+                _show_dialogue("", "击中芦滩蛇，剩余 %d 点体力。" % int(message["hp"]))
         "error":
             var code: String = message["code"]
             var reason: String = ERRORS.get(code, "这个动作暂时无法完成。")
             if my_id.is_empty():
                 _connection_failed(reason)
-            elif code != "too_fast":
-                activity.text = reason
+            else:
+                if reply_to == "move" and _movement.pending != GridInput.OUTSIDE:
+                    _movement.reject()
+                    view.correct_step(_movement.cell)
+                    if code != "too_fast":
+                        _clear_input()
+                if code != "too_fast":
+                    _show_dialogue("", reason)
 
-func _private_state(record: Dictionary) -> void:
-    quest_status.text = QUESTS.get(record["quest"], "")
-    inventory.text = "铜钱 %d  ·  蛇胆 %d" % [int(record["coins"]), int(record["gall"])]
+func _show_dialogue(speaker: String, message: String) -> void:
+    dialogue_title.text = speaker
+    dialogue_title.visible = not speaker.is_empty()
+    dialogue_body.text = message
 
-func _move(step: Vector2i) -> void:
-    movement_clock = 0.19
-    _send({"type": "move", "dx": step.x, "dy": step.y})
+func _clear_input() -> void:
+    _movement.clear_intent()
+    _approach_target = ""
+
+func _pump_movement(now: int) -> void:
+    if _movement.at_goal():
+        var target := _approach_target
+        _clear_input()
+        if target != "" and (target != "reed_snake" or view.monster.get("alive", false)):
+            _send({"type": "attack" if target == "reed_snake" else "interact", "target": target})
+        return
+    var step := _movement.next_step(view.tiles, now)
+    if step == GridInput.OUTSIDE:
+        _clear_input()
+        _show_dialogue("", "到不了这个位置。")
+    elif step != Vector2i.ZERO:
+        _move(step, now)
+
+func _move(step: Vector2i, now: int = -1) -> void:
+    if _movement.pending != GridInput.OUTSIDE or _movement.cell == GridInput.OUTSIDE:
+        return
+    if _send({"type": "move", "dx": step.x, "dy": step.y}):
+        _movement.begin_step(step, Time.get_ticks_msec() if now < 0 else now)
+        view.preview_step(_movement.pending)
 
 func _my_tile() -> Vector2i:
     var me: Dictionary = view.players.get(my_id, {"x": -99, "y": -99})
     return Vector2i(int(me["x"]), int(me["y"]))
 
 func _on_tile(tile: Vector2i) -> void:
-    var step := tile - _my_tile()
-    if abs(step.x) + abs(step.y) > 1:
-        activity.text = "点击相邻格移动，走近后可以调查。"
+    if _movement.cell == GridInput.OUTSIDE:
         return
+    var target := ""
     for id in view.features:
         var item: Dictionary = view.features[id]
         if tile == Vector2i(int(item["x"]), int(item["y"])):
             if id == "reed_snake" and not view.monster.get("alive", false):
                 break
-            _send({"type": "attack" if id == "reed_snake" else "interact", "target": id})
-            return
-    if step != Vector2i.ZERO and movement_clock <= 0:
-        _move(step)
+            target = id
+            break
+    _approach_target = ""
+    if not _movement.seek(view.tiles, tile, 0 if target.is_empty() else 1):
+        _show_dialogue("", "到不了这个位置。")
+        return
+    _approach_target = target
+    _pump_movement(Time.get_ticks_msec())
 
 func _unhandled_key_input(event: InputEvent) -> void:
-    if my_id.is_empty() or not event.pressed or event.echo:
+    if my_id.is_empty():
+        return
+    if MOVE_KEYS.has(event.physical_keycode):
+        if not event.echo:
+            if event.pressed:
+                var direction: Vector2i = MOVE_KEYS[event.physical_keycode]
+                _approach_target = ""
+                _movement.press(event.physical_keycode, direction)
+                view.face_local(direction)
+                _pump_movement(Time.get_ticks_msec())
+            else:
+                _movement.release(event.physical_keycode)
+        get_viewport().set_input_as_handled()
+        return
+    if not event.pressed or event.echo:
         return
     if event.physical_keycode == KEY_SPACE:
         _send({"type": "attack", "target": "reed_snake"})
@@ -351,7 +399,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
                 best_distance = distance
                 best = id
         if best == "":
-            activity.text = "附近没有可以调查的东西。"
+            _show_dialogue("", "附近没有可以调查的东西。")
         else:
             _send({"type": "interact", "target": best})
         get_viewport().set_input_as_handled()

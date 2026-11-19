@@ -4,6 +4,10 @@
 
 环境变量 `FERRY_URL`、`FERRY_TOKEN` 可直接设定启动连接。Linux 缺少中文字库时可设 `FERRY_FONT` 指向本机 CJK 字体文件。只分发客户端目录或 Godot 导出包给玩家。
 
-方向键或 WASD 移动，E 交互，空格攻击，鼠标点击相邻格也能操作。
+短按方向键或 WASD 走一格，按住连续走。左键点击地面自动寻路，点人物会走近对话。靠近后也可以按 E 对话或调查，按空格攻击。
 
-`assets/ferry-grid-concept.png` 用于入口画面。`assets/animal-atlas.png` 是游戏内角色图集。关卡网格由世界服传入。
+溪桥渡的地形、建筑和动物角色来自 `assets/models/`。Godot 在独立的 3D 视口里实时渲染这些模型，固定正交相机与世界服下发的格子共用坐标。旧角色图集和布局图可用于美术对照。Blender 源文件分别保存在项目根目录的 `art/ferry/` 和 `art/characters/`。
+
+小虎侠会播放模型自带的站姿和走路骨骼动画。`walk_motion.gd` 用世界服确认的相邻坐标推进移动和朝向。
+
+在此目录运行 `godot --headless --path . --script res://tests/modeled_ferry_test.gd` 可验证模型载入、骨骼动作、同图角色和点击坐标。
