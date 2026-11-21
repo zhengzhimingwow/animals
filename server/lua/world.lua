@@ -20,14 +20,34 @@ local features = {
 }
 
 local function error_reply(code)
-    return {type = 'error', code = code}, false
+    return {type = 'error', code = code}, nil
+end
+
+local function facing_name(dx, dy)
+    if dx < 0 then return 'left' end
+    if dx > 0 then return 'right' end
+    if dy < 0 then return 'up' end
+    return 'down'
+end
+
+local function facing_towards(from, to, fallback)
+    local dx, dy = to.x - from.x, to.y - from.y
+    if dx == 0 and dy == 0 then return fallback end
+    if math.abs(dx) >= math.abs(dy) then
+        return dx > 0 and 'right' or 'left'
+    end
+    return dy > 0 and 'down' or 'up'
 end
 
 local function walkable(x, y)
     if math.type(x) ~= 'integer' or math.type(y) ~= 'integer'
         or x < 1 or x > width or y < 1 or y > #tiles then return false end
     local tile = tiles[y]:sub(x, x)
-    return tile == '.' or tile == ',' or tile == 'D'
+    if not (tile == '.' or tile == ',' or tile == 'D') then return false end
+    for _, feature in pairs(features) do
+        if feature.x == x and feature.y == y then return false end
+    end
+    return true
 end
 
 local function nearby(player, target)
@@ -40,7 +60,9 @@ function World.new(load_record, save_record, clock)
         save_record = save_record,
         clock = clock,
         players = {},
+        joining = {},
         monster_hp = 3,
+        monster_locking = false,
         respawn_at = 0,
     }, World)
 end
@@ -59,25 +81,34 @@ function World:commit(id, changes)
 end
 
 function World:join(id)
-    if self.players[id] then return error_reply('already_online') end
+    if self.players[id] or self.joining[id] then return error_reply('already_online') end
+    self.joining[id] = true
     local state, load_error = self.load_record(id)
+    self.joining[id] = nil
     if load_error then return error_reply('store_unavailable') end
     if not state then
         state = {x = 2, y = 4, quest = 'new', found_trail = false, gall = 0, coins = 0, revision = 0}
     elseif not walkable(state.x, state.y) then
         state.x, state.y = 2, 4
     end
-    self.players[id] = {state = state, next_move = 0, next_attack = 0}
+    self.players[id] = {state = state, facing = 'down', next_move = 0, next_attack = 0}
+    local event = {type = 'event', event = 'player_joined', id = id,
+        x = state.x, y = state.y, facing = 'down'}
     return {type = 'joined', id = id, map = {id = 'ferry', tiles = tiles, features = features},
-        player = self:private(id)}, true
+        player = self:private(id)}, event
 end
 
 function World:leave(id)
     local player = self.players[id]
-    if not player then return false end
-    local saved = not player.dirty or self:commit(id)
+    if not player then return nil, true end
     self.players[id] = nil
-    return true, saved
+    local event = {type = 'event', event = 'player_left', id = id}
+    if not player.dirty then return event, true end
+    local next_state = {}
+    for key, value in pairs(player.state) do next_state[key] = value end
+    next_state.revision = player.state.revision + 1
+    local saved = self.save_record(id, next_state, player.state.revision)
+    return event, saved
 end
 
 function World:private(id)
@@ -88,7 +119,7 @@ end
 function World:snapshot()
     local players = {}
     for id, player in pairs(self.players) do
-        players[id] = {x = player.state.x, y = player.state.y}
+        players[id] = {x = player.state.x, y = player.state.y, facing = player.facing}
     end
     return {type = 'world', players = players, monster = {
         hp = self.monster_hp, alive = self.monster_hp > 0,
@@ -98,12 +129,12 @@ end
 function World:tick()
     if self.monster_hp == 0 and self.clock() >= self.respawn_at then
         self.monster_hp = 3
-        return true
+        return {type = 'event', event = 'monster_respawned', hp = self.monster_hp, alive = true}
     end
-    return false
+    return nil
 end
 
-function World:move(player, request)
+function World:move(id, player, request)
     local dx, dy = request.dx, request.dy
     if math.type(dx) ~= 'integer' or math.type(dy) ~= 'integer'
         or not ((dx == -1 or dx == 1) and dy == 0 or (dy == -1 or dy == 1) and dx == 0) then
@@ -114,13 +145,17 @@ function World:move(player, request)
     local now = self.clock()
     if now < player.next_move then return error_reply('too_fast') end
     player.state.x, player.state.y = x, y
+    player.facing = facing_name(dx, dy)
     player.next_move = now + 150
     player.dirty = true
-    return {type = 'moved'}, true
+    local event = {type = 'event', event = 'player_moved', id = id,
+        x = x, y = y, facing = player.facing}
+    return {type = 'moved', x = x, y = y, facing = player.facing}, event
 end
 
 function World:interact(id, target)
-    local state = self.players[id].state
+    local player = self.players[id]
+    local state = player.state
     local feature = features[target]
     if not feature or target == 'reed_snake' then return error_reply('unknown_target') end
     if not nearby(state, feature) then return error_reply('too_far') end
@@ -158,31 +193,44 @@ function World:interact(id, target)
     end
 
     if changes and not self:commit(id, changes) then return error_reply('save_failed') end
-    return {type = 'dialogue', speaker = feature.label, text = text, player = self:private(id)}, false
+    local next_facing = facing_towards(player.state, feature, player.facing)
+    local event = nil
+    if next_facing ~= player.facing then
+        player.facing = next_facing
+        event = {type = 'event', event = 'player_faced', id = id, facing = player.facing}
+    end
+    return {type = 'dialogue', speaker = feature.label, text = text, player = self:private(id)}, event
 end
 
 function World:attack(id, target)
     local player = self.players[id]
     if target ~= 'reed_snake' then return error_reply('unknown_target') end
     if not nearby(player.state, features.reed_snake) then return error_reply('too_far') end
-    if self.monster_hp == 0 then return error_reply('already_defeated') end
+    if self.monster_hp == 0 or self.monster_locking then return error_reply('already_defeated') end
     local now = self.clock()
     if now < player.next_attack then return error_reply('too_fast') end
 
     if self.monster_hp == 1 then
-        if not self:commit(id, {gall = player.state.gall + 1}) then return error_reply('save_failed') end
+        self.monster_locking = true
+        local ok = self:commit(id, {gall = player.state.gall + 1})
+        self.monster_locking = false
+        if not ok then return error_reply('save_failed') end
+        now = self.clock()
         self.respawn_at = now + 10000
     end
     self.monster_hp = self.monster_hp - 1
+    player.facing = facing_towards(player.state, features.reed_snake, player.facing)
     player.next_attack = now + 600
-    return {type = 'hit', hp = self.monster_hp, player = self:private(id)}, true
+    local event = {type = 'event', event = 'player_attacked', id = id, target = target,
+        facing = player.facing, hp = self.monster_hp, alive = self.monster_hp > 0}
+    return {type = 'hit', hp = self.monster_hp, player = self:private(id)}, event
 end
 
 function World:request(id, request)
     local player = self.players[id]
     if not player then return error_reply('unauthenticated') end
     if type(request) ~= 'table' then return error_reply('invalid_request') end
-    if request.type == 'move' then return self:move(player, request) end
+    if request.type == 'move' then return self:move(id, player, request) end
     if type(request.target) ~= 'string' then return error_reply('invalid_target') end
     if request.type == 'interact' then return self:interact(id, request.target) end
     if request.type == 'attack' then return self:attack(id, request.target) end

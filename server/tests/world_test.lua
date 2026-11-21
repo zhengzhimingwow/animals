@@ -21,19 +21,22 @@ local function world()
 end
 
 local game = world()
-assert(game:join('a').type == 'joined')
+local join_reply, join_event = game:join('a')
+assert(join_reply.type == 'joined' and join_event.event == 'player_joined' and join_event.facing == 'down')
 assert(game:join('b').type == 'joined')
 assert(game:join('a').code == 'already_online')
-assert(game:snapshot().players.a.x == 2)
+assert(game:snapshot().players.a.x == 2 and game:snapshot().players.a.facing == 'down')
 assert(game:request('a', {type = 'move', dx = 20, dy = 0}).code == 'invalid_step')
 assert(game:request('a', {type = 'move', dx = -1, dy = 0}).code == 'blocked')
+assert(game:request('a', {type = 'move', dx = 0, dy = -1}).code == 'blocked') -- apothecary at (2, 3)
 assert(game:request('a', {type = 'interact', target = 'reed_trail'}).code == 'too_far')
 
 local function move(id, dx, dy, count)
     for _ = 1, count or 1 do
         clock = clock + 250
-        local reply = game:request(id, {type = 'move', dx = dx, dy = dy})
+        local reply, event = game:request(id, {type = 'move', dx = dx, dy = dy})
         assert(reply.type == 'moved', reply.code)
+        assert(event.type == 'event' and event.event == 'player_moved' and event.id == id)
     end
 end
 
@@ -41,14 +44,16 @@ local function act(id, kind, target)
     return game:request(id, {type = kind, target = target})
 end
 
-assert(act('a', 'interact', 'apothecary').type == 'dialogue')
+local dlg_reply, face_event = act('a', 'interact', 'apothecary')
+assert(dlg_reply.type == 'dialogue' and face_event.event == 'player_faced' and face_event.facing == 'up')
 assert(game:private('a').quest == 'search')
 assert(game:private('b').quest == 'new')
 move('a', 1, 0, 7)
-assert(game:snapshot().players.a.x == 9)
+assert(game:snapshot().players.a.x == 9 and game:snapshot().players.a.facing == 'right')
 assert(act('a', 'interact', 'reed_trail').type == 'dialogue')
 move('a', 1, 0)
-assert(act('a', 'attack', 'reed_snake').hp == 2)
+local hit1, atk_event = act('a', 'attack', 'reed_snake')
+assert(hit1.hp == 2 and atk_event.event == 'player_attacked' and atk_event.hp == 2 and atk_event.alive)
 clock = clock + 600
 assert(act('a', 'attack', 'reed_snake').hp == 1)
 clock = clock + 600
@@ -56,18 +61,64 @@ fail_save = true
 assert(act('a', 'attack', 'reed_snake').code == 'save_failed')
 assert(game:snapshot().monster.hp == 1)
 fail_save = false
-assert(act('a', 'attack', 'reed_snake').hp == 0)
+local kill_reply, kill_event = act('a', 'attack', 'reed_snake')
+assert(kill_reply.hp == 0 and kill_event.event == 'player_attacked' and not kill_event.alive)
 assert(not game:snapshot().monster.alive)
 assert(game:private('a').gall == 1 and game:private('b').gall == 0)
+clock = clock + 10000
+local respawn_event = game:tick()
+assert(respawn_event and respawn_event.event == 'monster_respawned' and respawn_event.hp == 3 and respawn_event.alive)
 move('a', -1, 0, 8)
 assert(act('a', 'interact', 'apothecary').type == 'dialogue')
 assert(act('a', 'interact', 'apothecary').type == 'dialogue')
 assert(game:private('a').coins == 12 and game:private('a').gall == 0)
 assert(game:private('b').coins == 0)
 
-assert(game:leave('a'))
+local left_event, left_saved = game:leave('a')
+assert(left_event.event == 'player_left' and left_event.id == 'a' and left_saved)
 assert(not game:snapshot().players.a)
 local restarted = world()
 assert(restarted:join('a').type == 'joined')
 assert(restarted:private('a').quest == 'done' and restarted:private('a').coins == 12)
-print('shared world, server validation, isolated quests, atomic reward and reload passed')
+
+-- Verify Lua coroutine suspension across async load_record / save_record
+local async_world = World.new(
+    function(id)
+        local loaded = coroutine.yield('load', id)
+        return loaded
+    end,
+    function(id, state, revision)
+        return coroutine.yield('save', id, state, revision)
+    end,
+    function() return clock end)
+
+local join_a1 = coroutine.create(function() return async_world:join('c') end)
+local ok1, op1, id1 = coroutine.resume(join_a1)
+assert(ok1 and op1 == 'load' and id1 == 'c')
+-- Concurrent duplicate login while first load_record is in flight must be rejected
+local join_a2 = coroutine.create(function() return async_world:join('c') end)
+local ok2, reply2 = coroutine.resume(join_a2)
+assert(ok2 and reply2.code == 'already_online')
+local ok3, reply3 = coroutine.resume(join_a1, nil)
+assert(ok3 and reply3.type == 'joined')
+
+-- Concurrent killing blow while save_record is in flight must not double-kill
+local join_d = coroutine.create(function() return async_world:join('d') end)
+coroutine.resume(join_d)
+coroutine.resume(join_d, {x = 10, y = 4, quest = 'hunt', found_trail = true, gall = 0, coins = 0, revision = 1})
+local join_e = coroutine.create(function() return async_world:join('e') end)
+coroutine.resume(join_e)
+coroutine.resume(join_e, {x = 10, y = 4, quest = 'hunt', found_trail = true, gall = 0, coins = 0, revision = 1})
+assert(async_world:request('d', {type = 'attack', target = 'reed_snake'}).hp == 2)
+assert(async_world:request('e', {type = 'attack', target = 'reed_snake'}).hp == 1)
+clock = clock + 600
+local kill_d = coroutine.create(function() return async_world:request('d', {type = 'attack', target = 'reed_snake'}) end)
+local okk1, kop = coroutine.resume(kill_d)
+assert(okk1 and kop == 'save')
+local kill_e = coroutine.create(function() return async_world:request('e', {type = 'attack', target = 'reed_snake'}) end)
+local okk2, kreply = coroutine.resume(kill_e)
+assert(okk2 and kreply.code == 'already_defeated')
+local okk3, kdone = coroutine.resume(kill_d, true)
+assert(okk3 and kdone.hp == 0 and async_world:private('d').gall == 1 and async_world:private('e').gall == 0)
+
+print('shared world, server validation, isolated quests, atomic reward, reload and async guards passed')

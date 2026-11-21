@@ -2,10 +2,20 @@
 
 #include <mongoc/mongoc.h>
 #include <lua.hpp>
+#include <algorithm>
 #include <chrono>
+#include <condition_variable>
+#include <cstdint>
+#include <deque>
 #include <iostream>
+#include <mutex>
+#include <optional>
 #include <stdexcept>
-#include <string_view>
+#include <string>
+#include <thread>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 namespace {
 using Json = Runtime::Json;
@@ -109,19 +119,144 @@ std::string lua_error_text(lua_State* state) {
 Json failure(const char* code) {
     return {{"type", "error"}, {"code", code}};
 }
+
+// Asynchronous MongoDB worker pool with per-player FIFO serialization.
+class MongoStore {
+public:
+    using Job = std::function<void(mongoc_collection_t*)>;
+
+    MongoStore(const std::string& uri_string, std::string database, std::size_t threads)
+        : database_(std::move(database)) {
+        bson_error_t error{};
+        uri_.reset(mongoc_uri_new_with_error(uri_string.c_str(), &error));
+        if (!uri_) throw std::runtime_error("Invalid MongoDB connection configuration.");
+        pool_.reset(mongoc_client_pool_new(uri_.get()));
+        if (!pool_) throw std::runtime_error("Could not create MongoDB client pool.");
+
+        // Fail fast on startup if MongoDB is unreachable.
+        mongoc_client_t* probe = mongoc_client_pool_pop(pool_.get());
+        if (!probe) throw std::runtime_error("Could not acquire MongoDB client.");
+        Bson ping;
+        BSON_APPEND_INT32(ping.get(), "ping", 1);
+        const bool ok = mongoc_client_command_simple(
+            probe, database_.c_str(), ping.get(), nullptr, nullptr, nullptr);
+        mongoc_client_pool_push(pool_.get(), probe);
+        if (!ok) throw std::runtime_error("MongoDB ping failed. Check the server configuration.");
+
+        const std::size_t worker_count = std::clamp<std::size_t>(threads, 1, 16);
+        workers_.reserve(worker_count);
+        for (std::size_t i = 0; i < worker_count; ++i) {
+            workers_.emplace_back([this] { run(); });
+        }
+    }
+
+    ~MongoStore() { drain(); }
+
+    void enqueue(const std::string& player_id, Job job) {
+        {
+            std::lock_guard lock(mutex_);
+            if (stopping_) return;
+            queues_[player_id].push_back(std::move(job));
+            if (active_.insert(player_id).second) {
+                ready_.push_back(player_id);
+            }
+        }
+        cv_.notify_one();
+    }
+
+    void drain() {
+        {
+            std::lock_guard lock(mutex_);
+            if (stopping_) return;
+            stopping_ = true;
+        }
+        cv_.notify_all();
+        for (auto& worker : workers_) {
+            if (worker.joinable()) worker.join();
+        }
+        workers_.clear();
+    }
+
+private:
+    void run() {
+        while (true) {
+            std::string player_id;
+            Job job;
+            {
+                std::unique_lock lock(mutex_);
+                cv_.wait(lock, [this] {
+                    return !ready_.empty() || (stopping_ && active_.empty());
+                });
+                if (ready_.empty()) {
+                    if (stopping_ && active_.empty()) break;
+                    continue;
+                }
+                player_id = std::move(ready_.front());
+                ready_.pop_front();
+                auto& queue = queues_[player_id];
+                job = std::move(queue.front());
+                queue.pop_front();
+            }
+
+            if (mongoc_client_t* client = mongoc_client_pool_pop(pool_.get())) {
+                const std::unique_ptr<mongoc_collection_t, decltype(&mongoc_collection_destroy)> records(
+                    mongoc_client_get_collection(client, database_.c_str(), "players"),
+                    mongoc_collection_destroy);
+                try {
+                    job(records.get());
+                } catch (const std::exception& error) {
+                    std::cerr << "MongoDB worker error: " << error.what() << '\n';
+                }
+                mongoc_client_pool_push(pool_.get(), client);
+            } else {
+                try {
+                    job(nullptr);
+                } catch (const std::exception& error) {
+                    std::cerr << "MongoDB worker error: " << error.what() << '\n';
+                }
+            }
+
+            bool notify_all = false;
+            bool notify_one = false;
+            {
+                std::lock_guard lock(mutex_);
+                auto it = queues_.find(player_id);
+                if (it != queues_.end() && !it->second.empty()) {
+                    ready_.push_back(player_id);
+                    notify_one = true;
+                } else {
+                    if (it != queues_.end()) queues_.erase(it);
+                    active_.erase(player_id);
+                    if (stopping_ && active_.empty()) notify_all = true;
+                }
+            }
+            if (notify_all) cv_.notify_all();
+            else if (notify_one) cv_.notify_one();
+        }
+    }
+
+    MongoDriver mongo_;
+    std::string database_;
+    std::unique_ptr<mongoc_uri_t, decltype(&mongoc_uri_destroy)> uri_{nullptr, mongoc_uri_destroy};
+    std::unique_ptr<mongoc_client_pool_t, decltype(&mongoc_client_pool_destroy)> pool_{
+        nullptr, mongoc_client_pool_destroy};
+
+    std::mutex mutex_;
+    std::condition_variable cv_;
+    std::unordered_map<std::string, std::deque<Job>> queues_;
+    std::unordered_set<std::string> active_;
+    std::deque<std::string> ready_;
+    bool stopping_ = false;
+    std::vector<std::thread> workers_;
+};
 }  // namespace
 
 class Runtime::Impl {
 public:
-    Impl(const std::string& uri, const std::string& database, const std::filesystem::path& script)
-        : client_(mongoc_client_new(uri.c_str()), mongoc_client_destroy),
-          records_(client_ ? mongoc_client_get_collection(client_.get(), database.c_str(), "players") : nullptr,
-              mongoc_collection_destroy) {
-        if (!records_) throw std::runtime_error("Invalid MongoDB connection configuration.");
-        Bson ping;
-        BSON_APPEND_INT32(ping.get(), "ping", 1);
-        if (!mongoc_client_command_simple(client_.get(), database.c_str(), ping.get(), nullptr, nullptr, nullptr))
-            throw std::runtime_error("MongoDB ping failed. Check the server configuration.");
+    Impl(const std::string& uri, const std::string& database, const std::filesystem::path& script,
+        Post post, std::size_t db_threads)
+        : store_(uri, database, db_threads), post_(std::move(post)) {
+        if (!post_) throw std::runtime_error("Missing async post dispatcher.");
         if (!lua_) throw std::runtime_error("could not open Lua runtime");
         luaL_openlibs(lua_.get());
         auto* state = lua_.get();
@@ -137,38 +272,59 @@ public:
         lua_pop(state, 1);
     }
 
-    Result action(const char* method, const std::string* id = nullptr, const Json* data = nullptr) {
+    ~Impl() {
+        *alive_ = false;
+        store_.drain();
+    }
+
+    void action(const char* method, const std::string& id, const Json* data, Callback done) {
+        auto* main_state = lua_.get();
+        lua_State* co = lua_newthread(main_state);
+        const int ref = luaL_ref(main_state, LUA_REGISTRYINDEX);
+
+        auto call = std::make_shared<Call>(Call{co, ref, std::move(done)});
+        calls_[co] = call;
+
+        lua_rawgeti(co, LUA_REGISTRYINDEX, world_);
+        lua_getfield(co, -1, method);
+        lua_insert(co, -2);
+        lua_pushlstring(co, id.data(), id.size());
+        int count = 2;
+        if (data) {
+            push_json(co, *data);
+            ++count;
+        }
+        step(call, count);
+    }
+
+    Json tick() {
         auto* state = lua_.get();
         StackScope stack(state);
-        begin(method);
-        int count = 1;
-        if (id) {
-            lua_pushlstring(state, id->data(), id->size());
-            ++count;
-        }
-        if (data) {
-            push_json(state, *data);
-            ++count;
-        }
-        if (lua_pcall(state, count, 2, 0) != LUA_OK) {
+        begin(state, "tick");
+        if (lua_pcall(state, 1, 1, 0) != LUA_OK) {
             std::cerr << lua_error_text(state) << '\n';
-            return {failure("internal_error"), false};
+            return nullptr;
         }
-        return {read_lua(state, -2), static_cast<bool>(lua_toboolean(state, -1))};
+        return read_lua(state, -1);
     }
 
     Json snapshot() {
         auto* state = lua_.get();
         StackScope stack(state);
-        begin("snapshot");
+        begin(state, "snapshot");
         if (lua_pcall(state, 1, 1, 0) != LUA_OK)
             throw std::runtime_error(lua_error_text(state));
         return read_lua(state, -1);
     }
 
 private:
-    void begin(const char* method) {
-        auto* state = lua_.get();
+    struct Call {
+        lua_State* co = nullptr;
+        int ref = LUA_NOREF;
+        Callback done;
+    };
+
+    void begin(lua_State* state, const char* method) const {
         lua_rawgeti(state, LUA_REGISTRYINDEX, world_);
         lua_getfield(state, -1, method);
         lua_insert(state, -2);
@@ -183,6 +339,30 @@ private:
         return *static_cast<Impl*>(lua_touserdata(state, lua_upvalueindex(1)));
     }
 
+    void step(const std::shared_ptr<Call>& call, int nargs) {
+        int nres = 0;
+        const int status = lua_resume(call->co, lua_.get(), nargs, &nres);
+        if (status == LUA_YIELD) return;
+
+        Result result{failure("internal_error"), nullptr};
+        if (status == LUA_OK) {
+            try {
+                Json first = nres >= 1 ? read_lua(call->co, -nres) : Json(nullptr);
+                Json second = nres >= 2 ? read_lua(call->co, -nres + 1) : Json(nullptr);
+                result = {std::move(first), std::move(second)};
+            } catch (const std::exception& error) {
+                std::cerr << "Lua return decode error: " << error.what() << '\n';
+            }
+        } else {
+            std::cerr << lua_error_text(call->co) << '\n';
+        }
+
+        calls_.erase(call->co);
+        luaL_unref(lua_.get(), LUA_REGISTRYINDEX, call->ref);
+        call->ref = LUA_NOREF;
+        if (call->done) call->done(std::move(result));
+    }
+
     static int monotonic_clock(lua_State* state) {
         const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -190,89 +370,155 @@ private:
         return 1;
     }
 
-    static int load_record(lua_State* state) {
-        try {
-            const std::string id = lua_tostring(state, 1);
-            Bson query;
-            BSON_APPEND_UTF8(query.get(), "_id", id.c_str());
-            const std::unique_ptr<mongoc_cursor_t, decltype(&mongoc_cursor_destroy)> cursor(
-                mongoc_collection_find_with_opts(self(state).records_.get(), query.get(), nullptr, nullptr),
-                mongoc_cursor_destroy);
-            const bson_t* document = nullptr;
-            if (!mongoc_cursor_next(cursor.get(), &document)) {
-                if (mongoc_cursor_error(cursor.get(), nullptr)) throw std::runtime_error("find failed");
-                lua_pushnil(state);
-            } else {
-                const std::unique_ptr<char, decltype(&bson_free)> text(
-                    bson_as_relaxed_extended_json(document, nullptr), bson_free);
-                auto record = Json::parse(text.get());
-                record.erase("_id");
-                push_json(state, record);
-            }
-            return 1;
-        } catch (const std::exception&) {
-            std::cerr << "MongoDB character load failed\n";
-            lua_pushnil(state);
-            lua_pushliteral(state, "store_unavailable");
+    static int load_record(lua_State* co) {
+        auto& runtime = self(co);
+        const char* raw_id = lua_tostring(co, 1);
+        const std::string id = raw_id ? raw_id : "";
+        auto it = runtime.calls_.find(co);
+        if (it == runtime.calls_.end()) {
+            lua_pushnil(co);
+            lua_pushliteral(co, "store_unavailable");
             return 2;
         }
-    }
+        auto call = it->second;
+        auto alive = runtime.alive_;
 
-    static int save_record(lua_State* state) {
-        bool saved = false;
-        try {
-            auto* records = self(state).records_.get();
-            const std::string id = lua_tostring(state, 1);
-            const auto expected = static_cast<std::int64_t>(lua_tointeger(state, 3));
-            auto record = read_lua(state, 2);
-            record["_id"] = id;
-            const auto text = record.dump();
-            const std::unique_ptr<bson_t, decltype(&bson_destroy)> document(
-                bson_new_from_json(reinterpret_cast<const uint8_t*>(text.data()), text.size(), nullptr),
-                bson_destroy);
-            if (!document) throw std::runtime_error("invalid character document");
-            if (expected == 0) {
-                saved = mongoc_collection_insert_one(records, document.get(), nullptr, nullptr, nullptr);
-            } else {
-                Bson filter;
-                BSON_APPEND_UTF8(filter.get(), "_id", id.c_str());
-                BSON_APPEND_INT64(filter.get(), "revision", expected);
-                bson_t reply;
-                if (mongoc_collection_replace_one(records, filter.get(), document.get(), nullptr, &reply, nullptr)) {
-                    bson_iter_t count;
-                    saved = bson_iter_init_find(&count, &reply, "matchedCount") && bson_iter_as_int64(&count) == 1;
+        runtime.store_.enqueue(id, [&runtime, alive, call, id](mongoc_collection_t* records) {
+            std::optional<Json> loaded;
+            bool failed = false;
+            try {
+                if (!records) throw std::runtime_error("missing collection");
+                Bson query;
+                BSON_APPEND_UTF8(query.get(), "_id", id.c_str());
+                const std::unique_ptr<mongoc_cursor_t, decltype(&mongoc_cursor_destroy)> cursor(
+                    mongoc_collection_find_with_opts(records, query.get(), nullptr, nullptr),
+                    mongoc_cursor_destroy);
+                const bson_t* document = nullptr;
+                if (!mongoc_cursor_next(cursor.get(), &document)) {
+                    if (mongoc_cursor_error(cursor.get(), nullptr))
+                        throw std::runtime_error("find failed");
+                } else {
+                    const std::unique_ptr<char, decltype(&bson_free)> text(
+                        bson_as_relaxed_extended_json(document, nullptr), bson_free);
+                    auto record = Json::parse(text.get());
+                    record.erase("_id");
+                    loaded = std::move(record);
                 }
-                bson_destroy(&reply);
+            } catch (const std::exception&) {
+                std::cerr << "MongoDB character load failed\n";
+                failed = true;
             }
-        } catch (const std::exception&) {
-            std::cerr << "MongoDB character save failed\n";
-        }
-        lua_pushboolean(state, saved);
-        return 1;
+
+            runtime.post_([&runtime, alive, call, loaded = std::move(loaded), failed]() mutable {
+                if (!*alive) return;
+                if (failed) {
+                    lua_pushnil(call->co);
+                    lua_pushliteral(call->co, "store_unavailable");
+                    runtime.step(call, 2);
+                } else if (loaded) {
+                    push_json(call->co, *loaded);
+                    runtime.step(call, 1);
+                } else {
+                    lua_pushnil(call->co);
+                    runtime.step(call, 1);
+                }
+            });
+        });
+
+        return lua_yield(co, 0);
     }
 
-    MongoDriver mongo_;
-    std::unique_ptr<mongoc_client_t, decltype(&mongoc_client_destroy)> client_;
-    std::unique_ptr<mongoc_collection_t, decltype(&mongoc_collection_destroy)> records_;
+    static int save_record(lua_State* co) {
+        auto& runtime = self(co);
+        const char* raw_id = lua_tostring(co, 1);
+        const std::string id = raw_id ? raw_id : "";
+        const auto expected = static_cast<std::int64_t>(lua_tointeger(co, 3));
+        std::string text;
+        try {
+            auto record = read_lua(co, 2);
+            record["_id"] = id;
+            text = record.dump();
+        } catch (const std::exception&) {
+            std::cerr << "MongoDB character encode failed\n";
+            lua_pushboolean(co, false);
+            return 1;
+        }
+
+        auto it = runtime.calls_.find(co);
+        if (it == runtime.calls_.end()) {
+            lua_pushboolean(co, false);
+            return 1;
+        }
+        auto call = it->second;
+        auto alive = runtime.alive_;
+
+        runtime.store_.enqueue(id, [&runtime, alive, call, id, expected, text = std::move(text)](
+                                       mongoc_collection_t* records) {
+            bool saved = false;
+            try {
+                if (!records) throw std::runtime_error("missing collection");
+                const std::unique_ptr<bson_t, decltype(&bson_destroy)> document(
+                    bson_new_from_json(reinterpret_cast<const uint8_t*>(text.data()), text.size(), nullptr),
+                    bson_destroy);
+                if (!document) throw std::runtime_error("invalid character document");
+                if (expected == 0) {
+                    saved = mongoc_collection_insert_one(records, document.get(), nullptr, nullptr, nullptr);
+                } else {
+                    Bson filter;
+                    BSON_APPEND_UTF8(filter.get(), "_id", id.c_str());
+                    BSON_APPEND_INT64(filter.get(), "revision", expected);
+                    bson_t reply;
+                    if (mongoc_collection_replace_one(records, filter.get(), document.get(), nullptr, &reply, nullptr)) {
+                        bson_iter_t count;
+                        saved = bson_iter_init_find(&count, &reply, "matchedCount")
+                            && bson_iter_as_int64(&count) == 1;
+                    }
+                    bson_destroy(&reply);
+                }
+            } catch (const std::exception&) {
+                std::cerr << "MongoDB character save failed\n";
+            }
+
+            runtime.post_([&runtime, alive, call, saved]() {
+                if (!*alive) return;
+                lua_pushboolean(call->co, saved);
+                runtime.step(call, 1);
+            });
+        });
+
+        return lua_yield(co, 0);
+    }
+
+    MongoStore store_;
+    Post post_;
+    std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
     std::unique_ptr<lua_State, decltype(&lua_close)> lua_{luaL_newstate(), lua_close};
     int world_ = LUA_NOREF;
+    std::unordered_map<lua_State*, std::shared_ptr<Call>> calls_;
 };
 
-Runtime::Runtime(const std::string& uri, const std::string& database, const std::filesystem::path& script)
-    : impl_(std::make_unique<Impl>(uri, database, script)) {}
+Runtime::Runtime(const std::string& uri, const std::string& database, const std::filesystem::path& script,
+    Post post, std::size_t db_threads)
+    : impl_(std::make_unique<Impl>(uri, database, script, std::move(post), db_threads)) {}
+
 Runtime::~Runtime() = default;
-Runtime::Result Runtime::join(const std::string& id) { return impl_->action("join", &id); }
-Runtime::Result Runtime::request(const std::string& id, const Json& message) {
-    return impl_->action("request", &id, &message);
+
+void Runtime::join(const std::string& id, Callback done) {
+    impl_->action("join", id, nullptr, std::move(done));
 }
-bool Runtime::leave(const std::string& id) {
-    const auto [changed, saved] = impl_->action("leave", &id);
-    if (changed.is_boolean() && changed.get<bool>() && !saved)
-        std::cerr << "Disconnect checkpoint failed\n";
-    return changed.is_boolean() && changed.get<bool>();
+
+void Runtime::request(const std::string& id, const Json& message, Callback done) {
+    impl_->action("request", id, &message, std::move(done));
 }
-bool Runtime::tick() {
-    auto changed = impl_->action("tick").first;
-    return changed.is_boolean() && changed.get<bool>();
+
+void Runtime::leave(const std::string& id, LeaveCallback done) {
+    impl_->action("leave", id, nullptr, [done = std::move(done)](Result result) {
+        const bool saved = result.second.is_boolean() && result.second.get<bool>();
+        if (!result.first.is_null() && !saved) std::cerr << "Disconnect checkpoint failed\n";
+        if (done) done(std::move(result.first));
+    });
 }
+
+Runtime::Json Runtime::tick() { return impl_->tick(); }
+
 Runtime::Json Runtime::snapshot() { return impl_->snapshot(); }

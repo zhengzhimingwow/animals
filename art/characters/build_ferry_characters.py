@@ -20,7 +20,7 @@ RENDER = "--preview" in sys.argv
 TAU = math.tau
 
 
-def material(name, hex_color, roughness=0.76, metallic=0.0):
+def material(name, hex_color, roughness=0.78, metallic=0.0, emission=0.0):
     def linear(value):
         return value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
 
@@ -32,6 +32,9 @@ def material(name, hex_color, roughness=0.76, metallic=0.0):
     bsdf.inputs["Base Color"].default_value = color
     bsdf.inputs["Roughness"].default_value = roughness
     bsdf.inputs["Metallic"].default_value = metallic
+    if emission > 0.0:
+        bsdf.inputs["Emission Color"].default_value = color
+        bsdf.inputs["Emission Strength"].default_value = emission
     return value
 
 
@@ -309,6 +312,12 @@ def make_tiger(p):
         for x, z in ((.077, .814), (.096, .801), (.068, .798)):
             f.egg("Whisker spot", (side * x, -.268 + (x - .068) * .46, z),
                   (.0047, .003, .0047), p["toffee"], "head", sides=10, rows=6)
+        for idx, dz in enumerate((.012, -.004, -.020)):
+            f.sweep("Tiger whisker", [
+                (side * .102, -.245, .802 + dz, .0036),
+                (side * .198, -.230, .806 + dz * 1.2, .0026),
+                (side * .285, -.198, .795 + dz * 1.6, .0010),
+            ], p["stripe"], "head", sides=6, steps=3)
     ink_line(f, "Crown stripe", [(0, 1.142, .004), (.002, 1.105, .023), (-.004, 1.055, .021),
                                  (0, 1.010, .013), (0, .982, .002)],
              center, axes, p["stripe"], "head", depth=.009)
@@ -322,6 +331,16 @@ def make_tiger(p):
     little_smile(f, -.275, .787, .067, p["stripe"], "head")
     costume(f, p["indigo"], p["indigo_dark"], p["linen"], p["leather"], "chest")
     frog_buttons(f, -.151, .369, p["leather_light"], "chest")
+    # Jade waist pendant & gold belt clasp
+    f.egg("Belt brass clasp", (0, -.156, .372), (.036, .016, .026), p["brass"], "chest", sides=16, rows=10)
+    f.sweep("Jade pendant cord", [
+        (.112, -.126, .354, .005), (.126, -.136, .312, .005), (.132, -.139, .265, .004),
+    ], p["scarf"], "chest", sides=6)
+    f.egg("Waist jade disc", (.133, -.142, .258), (.029, .011, .032), p["jade_light"], "chest",
+          tilt=(.08, -.18, .22), sides=18, rows=10)
+    f.sweep("Jade tassel", [
+        (.133, -.142, .228, .007), (.138, -.145, .195, .014), (.142, -.146, .178, .009),
+    ], p["scarf_edge"], "chest", sides=8)
 
     scarf = []
     for index in range(13):
@@ -355,6 +374,12 @@ def make_tiger(p):
             (side * .246, -.019, .465, .077), (side * .257, -.026, .438, .072),
             (side * .259, -.030, .416, .055),
         ], p["indigo"], shoulder, aspect=.91, up=(0, 1, 0), bands=((.55, 1, p["linen"]),))
+        # Leather wuxia bracer with brass stud
+        f.sweep("Leather bracer", [
+            (side * .244, -.018, .472, .080), (side * .256, -.025, .440, .075),
+            (side * .258, -.029, .422, .064),
+        ], p["leather"], shoulder, aspect=.92, up=(0, 1, 0), sides=14)
+        f.egg("Bracer stud", (side * .288, -.054, .448), (.012, .012, .012), p["brass"], shoulder, sides=10, rows=6)
         f.egg("Paw", (side * .262, -.044, .382), (.067, .056, .064), p["gold"], shoulder,
               tilt=(.13, side * .14, 0))
         f.egg("Paw marking", (side * .264, -.080, .396), (.057, .024, .017), p["stripe"], shoulder)
@@ -471,6 +496,21 @@ def make_rabbit(p):
         f.sweep("Embroidered herb", [(x, -.217, z, .003), (x + size * .26, -.214, z + size * .50, .007),
                                     (x + size * .44, -.210, z + size, .002)], p["sage_dark"],
                 sides=7, steps=4, aspect=.44, up=(0, 1, 0))
+    # Woven bamboo herb basket on back + medicinal herbs + waist gourd
+    f.loft("Herb basket", [
+        (.315, .096, .076, .185), (.370, .112, .088, .192), (.475, .128, .098, .198),
+        (.565, .138, .104, .202), (.595, .132, .098, .200),
+    ], p["straw"], sides=20, drape=.035)
+    f.loft("Basket rim", [
+        (.575, .142, .108, .202), (.595, .146, .112, .202), (.612, .140, .106, .202),
+    ], p["ochre"], sides=20)
+    for idx, (ox, oy, h) in enumerate(((-.055, .188, .72), (.008, .205, .75), (.062, .195, .70), (-.020, .232, .69))):
+        f.sweep("Fresh herb sprig", [
+            (ox, oy, .575, .010), (ox * 1.15, oy + .018, .645, .022), (ox * 1.25, oy + .030, h, .004),
+        ], p["jade_light"] if idx % 2 == 0 else p["sage_dark"], sides=8, steps=4, aspect=.38, up=(0, 1, 0))
+    f.egg("Medicine gourd bottom", (.176, -.058, .302), (.048, .048, .054), p["brass"], sides=18, rows=12)
+    f.egg("Medicine gourd top", (.176, -.058, .372), (.033, .033, .036), p["brass"], sides=16, rows=10)
+    f.egg("Gourd stopper", (.176, -.058, .412), (.014, .014, .015), p["scarf"], sides=12, rows=8)
     return f
 
 
@@ -523,6 +563,12 @@ def make_ox(p):
                 (x + side * .011, -.187, .920 + .016 * index, .004),
             ], p["ox_hair"] if index % 2 else p["ox"], sides=12, aspect=.69, up=(0, 1, 0))
     little_smile(f, -.270, .680, .074, p["ox_dark"])
+    # Brass nose ring
+    nose_ring = []
+    for index in range(15):
+        phi = math.radians(-155 + 310 * index / 14)
+        nose_ring.append((.046 * math.sin(phi), -.286 - .006 * math.cos(phi), .698 - .042 * math.cos(phi), .0085))
+    f.sweep("Brass nose ring", nose_ring, p["brass"], sides=10, steps=2)
     costume(f, p["mustard"], p["ochre"], p["linen"], p["indigo"], scale=1.07)
     f.loft("Straw cape collar", [
         (.530, .266, .136, .013), (.563, .286, .147, .018), (.622, .233, .138, .017),
@@ -558,6 +604,32 @@ def make_ox(p):
                 )
                 straw_leaf(f, base, tip, .036 - .004 * layer,
                            (p["straw_light"], p["straw"], p["mustard"])[(index + 2 * layer) % 3])
+    # Conical woven bamboo hat (douli) slung across back
+    hat_center = Vector((0.0, .235, .565))
+    hat_rings = []
+    for rad, depth in ((.012, .118), (.095, .086), (.195, .048), (.305, .010), (.355, -.010)):
+        ring_pts = []
+        for s in range(28):
+            phi = TAU * s / 28
+            ring_pts.append((hat_center.x + rad * math.cos(phi),
+                             hat_center.y + depth,
+                             hat_center.z + rad * math.sin(phi)))
+        hat_rings.append(ring_pts)
+    hat_verts = [pt for ring in hat_rings for pt in ring]
+    hat_faces = []
+    for r in range(len(hat_rings) - 1):
+        for s in range(28):
+            n = (s + 1) % 28
+            a = r * 28 + s
+            b = r * 28 + n
+            c = (r + 1) * 28 + n
+            d = (r + 1) * 28 + s
+            hat_faces.append((a, b, c, d))
+    f.mesh("Bamboo rain hat", hat_verts, hat_faces, p["straw_light"], None)
+    hat_rim = [(hat_center.x + .355 * math.cos(TAU * s / 28),
+                hat_center.y - .010,
+                hat_center.z + .355 * math.sin(TAU * s / 28), .013) for s in range(29)]
+    f.sweep("Hat bamboo rim", hat_rim, p["ochre"], sides=8, steps=2)
     return f
 
 
@@ -640,6 +712,23 @@ def make_snake(p):
         f.sweep("Forked tongue tip", [tongue[-1], (-.046 + side * .012, -.347, .536, .005),
                                      (-.046 + side * .016, -.359, .533, .0015)],
                 p["tongue"], sides=7, aspect=.72)
+        # Curved ivory fangs
+        f.sweep("Snake fang", [
+            (-.037 + side * .058, -.255, .586, .011),
+            (-.037 + side * .061, -.265, .560, .007),
+            (-.037 + side * .056, -.261, .538, .0015),
+        ], p["horn"], sides=8, steps=3)
+        # Flared hood frill behind head
+        f.egg("Cobra hood frill", (-.018 + side * .128, -.068, .555), (.088, .032, .155),
+              p["jade_dark"], tilt=(.14, side * .22, side * -.28), sides=18, rows=12)
+        f.egg("Hood gold accent", (-.018 + side * .136, -.092, .565), (.052, .014, .105),
+              p["snake_belly"], tilt=(.14, side * .22, side * -.28), sides=14, rows=10)
+    # Dorsal ridge crest spines along raised neck
+    for idx in range(6):
+        t = idx / 5
+        f.egg("Dorsal spine", (.060 * (1 - t) - .015 * t, .018 - .040 * t, .26 + .34 * t),
+              (.014, .034, .022), p["jade_light"] if idx % 2 == 0 else p["jade_dark"],
+              tilt=(-.35, 0, 0), sides=10, rows=6)
     return f
 
 
@@ -674,7 +763,7 @@ def tiger_rig(figure, mesh):
     modifier.object = actor
     bpy.context.scene.render.fps = 24
     actor.animation_data_create()
-    for action_name, duration, animate in (("idle", 48, tiger_idle), ("walk", 24, tiger_walk)):
+    for action_name, duration, animate in (("idle", 48, tiger_idle), ("walk", 24, tiger_walk), ("attack", 16, tiger_attack)):
         action = bpy.data.actions.new(action_name)
         actor.animation_data.action = action
         for step in range(9):
@@ -767,33 +856,52 @@ def tiger_walk(theta):
     return pose
 
 
+def tiger_attack(theta):
+    # Martial forward strike: wind-up -> crisp palm/paw thrust -> recover
+    strike = math.sin(theta)
+    thrust = max(0.0, math.sin(theta - 0.35))
+    return {
+        "hips": transform(location=(0, 0.025 * thrust, -0.055 * thrust), rotation=(0, 0.14 * strike, 0)),
+        "chest": transform(rotation=(0.24 * thrust, -0.32 * strike, 0.08 * thrust)),
+        "head": transform(rotation=(-0.14 * thrust, 0.22 * strike, 0)),
+        "arm.L": transform(rotation=(-0.45 * strike, 0, -0.22 * thrust)),
+        "arm.R": transform(rotation=(1.15 * thrust - 0.25 * max(0.0, -strike), 0.20 * thrust, 0.18 * thrust)),
+        "leg.L": transform(rotation=(0.28 * thrust, 0, 0)),
+        "leg.R": transform(rotation=(-0.32 * thrust, 0, 0)),
+        "foot.L": transform(),
+        "foot.R": transform(),
+        "scarf": transform(rotation=(0.35 * thrust, 0.28 * strike, -0.18 * thrust)),
+        "tail": transform(rotation=(0.15 * thrust, -0.35 * strike, 0.12 * thrust)),
+    }
+
+
 def palette():
     colors = {
-        "gold": ("Tiger persimmon", "E19942"), "stripe": ("Burnt umber", "432923"),
-        "fur": ("Cream fur", "F8E5BE"), "rose": ("Soft ear blush", "E3A48E"),
-        "amber": ("Tiger amber", "A8672F", .34), "amber_dark": ("Ox amber", "815029", .34),
-        "eye_white": ("Natural sclera", "FFF4D4", .40), "pupil": ("Dark eye glass", "251C19", .26),
-        "gleam": ("Glint", "FFF8DE", .33), "toffee": ("Warm fur freckles", "BB795C"),
-        "nose": ("Rose umber", "955443", .50), "nose_light": ("Nose blush", "CC8971", .56),
-        "linen": ("Raw linen", "E6C99A"), "leather": ("Oiled leather", "633624"),
-        "leather_light": ("Laced leather", "A6653C"), "indigo": ("Indigo cotton", "475C78"),
-        "indigo_dark": ("Indigo binding", "303F57"), "trousers": ("Padded brown", "594D46"),
-        "scarf": ("Madder scarf", "A8432F"), "scarf_edge": ("Coral topstitch", "D26C4D"),
-        "wood": ("Rosewood", "553327"), "brass": ("Burnished brass", "B88B49", .54, .33),
-        "rabbit": ("Rabbit pebble fur", "B5A895"), "rabbit_light": ("Rabbit fur tips", "D0C1A9"),
-        "rabbit_dark": ("Rabbit gray brow", "8E7A69"), "rabbit_iris": ("Rabbit tea iris", "896345", .35),
-        "blush": ("Peach cheek", "EDB09A"), "ink": ("Deep brown", "402B25"),
-        "sage": ("Sage cotton", "77896F"), "sage_dark": ("Mossy cloth", "4A6051"),
-        "pouch": ("Ochre pouch linen", "D6AB68"), "ox": ("Ox warm chestnut", "B47242"),
-        "ox_dark": ("Ox dark chestnut", "674231"), "ox_hair": ("Ox copper hair", "A65F35"),
-        "ox_muzzle": ("Ox muzzle", "E8AC80"), "ox_rose": ("Ox ear salmon", "CD8D68"),
-        "horn": ("Worn ivory", "E4CCAA"), "horn_base": ("Weathered ivory", "A18B71"),
-        "mustard": ("Ochre cotton", "C89744"), "ochre": ("Straw's umber", "886131"),
-        "straw": ("Honey straw", "D0A055"), "straw_light": ("Pale sun straw", "E2B869"),
-        "hoof": ("Soft hoof", "594136"), "jade": ("Jade scales", "527B66", .60),
-        "jade_dark": ("Deep jade", "345E50", .65), "jade_light": ("Sunlit jade", "73947A", .59),
-        "snake_belly": ("Snake belly ivory", "E7D09D"), "snake_belly_dark": ("Snake shadow ivory", "C4A975"),
-        "snake_eye": ("Snake gold iris", "D7973D", .35), "tongue": ("Snake tongue", "AA544F"),
+        "gold": ("Tiger persimmon", "DF8E36", .86), "stripe": ("Burnt umber", "3B221D", .88),
+        "fur": ("Cream fur", "F6E2B8", .90), "rose": ("Soft ear blush", "E29B84", .86),
+        "amber": ("Tiger amber", "B26C2A", .14), "amber_dark": ("Ox amber", "844F24", .16),
+        "eye_white": ("Natural sclera", "FFF5DA", .18), "pupil": ("Dark eye glass", "1C1513", .08),
+        "gleam": ("Glint", "FFFDF0", .08, .0, .45), "toffee": ("Warm fur freckles", "B57153", .86),
+        "nose": ("Rose umber", "8F4C3C", .32), "nose_light": ("Nose blush", "CC876E", .36),
+        "linen": ("Raw linen", "E2C493", .88), "leather": ("Oiled leather", "5C301F", .44),
+        "leather_light": ("Laced leather", "A26037", .50), "indigo": ("Indigo cotton", "3C5270", .84),
+        "indigo_dark": ("Indigo binding", "27364E", .86), "trousers": ("Padded brown", "52463F", .88),
+        "scarf": ("Madder scarf", "B03A27", .82), "scarf_edge": ("Coral topstitch", "DB6E4B", .78),
+        "wood": ("Rosewood", "4F2D21", .52), "brass": ("Burnished brass", "D0A052", .26, .84),
+        "rabbit": ("Rabbit pebble fur", "B4A591", .90), "rabbit_light": ("Rabbit fur tips", "D2C3AA", .90),
+        "rabbit_dark": ("Rabbit gray brow", "867261", .88), "rabbit_iris": ("Rabbit tea iris", "8C6342", .16),
+        "blush": ("Peach cheek", "EEA891", .86), "ink": ("Deep brown", "3A251F", .82),
+        "sage": ("Sage cotton", "6C8265", .84), "sage_dark": ("Mossy cloth", "405849", .86),
+        "pouch": ("Ochre pouch linen", "D1A35F", .86), "ox": ("Ox warm chestnut", "AD693A", .88),
+        "ox_dark": ("Ox dark chestnut", "5F3A2A", .88), "ox_hair": ("Ox copper hair", "9E572E", .88),
+        "ox_muzzle": ("Ox muzzle", "E4A478", .78), "ox_rose": ("Ox ear salmon", "C98661", .82),
+        "horn": ("Worn ivory", "E8D3B0", .38), "horn_base": ("Weathered ivory", "9C846A", .52),
+        "mustard": ("Ochre cotton", "C48F3B", .86), "ochre": ("Straw's umber", "7F5829", .84),
+        "straw": ("Honey straw", "CC9A4D", .82), "straw_light": ("Pale sun straw", "E2B764", .80),
+        "hoof": ("Soft hoof", "4F382E", .42), "jade": ("Jade scales", "46765E", .36),
+        "jade_dark": ("Deep jade", "2A5446", .40), "jade_light": ("Sunlit jade", "6FA17B", .32),
+        "snake_belly": ("Snake belly ivory", "E8CF98", .62), "snake_belly_dark": ("Snake shadow ivory", "C0A26B", .66),
+        "snake_eye": ("Snake gold iris", "E6A135", .12, .0, .55), "tongue": ("Snake tongue", "B64844", .36),
     }
     return {name: material(*values) for name, values in colors.items()}
 
@@ -821,7 +929,8 @@ def export(figure, species, rig=None):
         export_extras=True,
     )
     if rig:
-        rig.animation_data.nla_tracks["walk"].mute = True
+        for track in rig.animation_data.nla_tracks:
+            track.mute = track.name != "idle"
         bpy.context.scene.frame_set(0)
     obj = figure.parts[0]
     print(f"{species}: {len(obj.data.vertices)} vertices, {len(obj.data.materials)} materials")

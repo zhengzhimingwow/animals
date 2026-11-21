@@ -5,10 +5,13 @@
 #include <algorithm>
 #include <chrono>
 #include <csignal>
+#include <cstdint>
 #include <cstdlib>
 #include <deque>
+#include <functional>
 #include <iostream>
 #include <map>
+#include <optional>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -28,18 +31,22 @@ class Session : public std::enable_shared_from_this<Session> {
 public:
     Session(tcp::socket socket, Hub& hub) : socket_(std::move(socket)), hub_(hub) {}
     void start();
+    void read();
     void send(std::string message);
     void stop();
+    bool is_stopped() const { return stopped_; }
+    bool is_busy() const { return busy_; }
+    void set_busy(bool busy) { busy_ = busy; }
     std::string id;
 
 private:
-    void read();
     void write();
     ws::stream<beast::tcp_stream> socket_;
     Hub& hub_;
     beast::flat_buffer input_;
     std::deque<std::string> output_;
     bool stopped_ = false;
+    bool busy_ = false;
 };
 
 class Hub {
@@ -51,6 +58,7 @@ public:
     void start() { accept(); schedule_tick(); }
 
     void stop() {
+        stopping_ = true;
         listener_.close();
         timer_.cancel();
         const std::vector sessions(sessions_.begin(), sessions_.end());
@@ -59,33 +67,64 @@ public:
 
     void remove(const std::shared_ptr<Session>& session) {
         sessions_.erase(session);
-        if (!session->id.empty() && world_.leave(session->id)) broadcast();
+        if (!session->id.empty() && !session->is_busy()) {
+            const std::string player_id = std::move(session->id);
+            session->id.clear();
+            leave_player(player_id);
+        }
     }
 
-    void handle(Session& session, const std::string& message) {
+    void handle(const std::shared_ptr<Session>& session, const std::string& message,
+        std::function<void()> next) {
         Json request = Json::parse(message, nullptr, false);
+        std::optional<std::int64_t> seq;
+        if (request.is_object()) {
+            auto seq_it = request.find("seq");
+            if (seq_it != request.end() && seq_it->is_number_integer())
+                seq = seq_it->get<std::int64_t>();
+        }
         if (!request.is_object() || !request.contains("type") || !request["type"].is_string()) {
-            error(session, "invalid_request");
+            error(*session, "invalid_request", seq);
+            next();
             return;
         }
         // Only the small, flat command surface is passed into Lua.
         Json command = {{"type", request["type"]}};
-        if (session.id.empty()) {
+        if (session->id.empty()) {
             if (request["type"] != "login") {
-                error(session, "unauthenticated");
+                error(*session, "unauthenticated", seq);
+                next();
                 return;
             }
             const auto token = request.find("token");
             const auto player = token != request.end() && token->is_string()
                 ? tokens_.find(token->get_ref<const std::string&>()) : tokens_.end();
             if (player == tokens_.end()) {
-                error(session, "bad_token");
+                error(*session, "bad_token", seq);
+                next();
                 return;
             }
-            auto [reply, changed] = world_.join(player->second);
-            if (changed) session.id = player->second;
-            session.send(reply.dump());
-            if (changed) broadcast();
+            const std::string player_id = player->second;
+            session->set_busy(true);
+            world_.join(player_id,
+                [this, session, player_id, seq, next = std::move(next)](Runtime::Result result) {
+                    session->set_busy(false);
+                    auto& [reply, event] = result;
+                    const bool joined = !event.is_null();
+                    if (session->is_stopped()) {
+                        if (joined) leave_player(player_id);
+                        return;
+                    }
+                    if (seq && reply.is_object()) reply["seq"] = *seq;
+                    if (joined) session->id = player_id;
+                    session->send(reply.dump());
+                    if (joined) {
+                        // Joining player gets the full authoritative snapshot; peers get a compact delta event.
+                        session->send(world_.snapshot().dump());
+                        broadcast(event, session.get());
+                    }
+                    next();
+                });
             return;
         }
 
@@ -93,14 +132,36 @@ public:
             auto value = request.find(field);
             if (value != request.end() && value->is_primitive()) command[field] = *value;
         }
-        const auto [reply, changed] = world_.request(session.id, command);
-        session.send(reply.dump());
-        if (changed) broadcast();
+        const std::string player_id = session->id;
+        session->set_busy(true);
+        world_.request(player_id, command,
+            [this, session, player_id, seq, next = std::move(next)](Runtime::Result result) {
+                session->set_busy(false);
+                auto& [reply, event] = result;
+                if (session->is_stopped()) {
+                    if (!event.is_null() && !stopping_) broadcast(event);
+                    session->id.clear();
+                    leave_player(player_id);
+                    return;
+                }
+                if (seq && reply.is_object()) reply["seq"] = *seq;
+                session->send(reply.dump());
+                if (!event.is_null()) broadcast(event);
+                next();
+            });
     }
 
 private:
-    static void error(Session& session, const char* code) {
-        session.send(Json{{"type", "error"}, {"code", code}}.dump());
+    static void error(Session& session, const char* code, std::optional<std::int64_t> seq = std::nullopt) {
+        Json payload{{"type", "error"}, {"code", code}};
+        if (seq) payload["seq"] = *seq;
+        session.send(payload.dump());
+    }
+
+    void leave_player(const std::string& player_id) {
+        world_.leave(player_id, [this](Json event) {
+            if (!event.is_null() && !stopping_) broadcast(event);
+        });
     }
 
     void accept() {
@@ -118,16 +179,18 @@ private:
         timer_.expires_after(100ms);
         timer_.async_wait([this](beast::error_code error) {
             if (error) return;
-            if (world_.tick()) broadcast();
+            const auto event = world_.tick();
+            if (!event.is_null()) broadcast(event);
             schedule_tick();
         });
     }
 
-    void broadcast() {
-        const auto message = world_.snapshot().dump();
+    void broadcast(const Json& payload, const Session* exclude = nullptr) {
+        if (payload.is_null()) return;
+        const auto message = payload.dump();
         const std::vector sessions(sessions_.begin(), sessions_.end());
         for (const auto& session : sessions)
-            if (!session->id.empty()) session->send(message);
+            if (!session->id.empty() && session.get() != exclude) session->send(message);
     }
 
     tcp::acceptor listener_;
@@ -135,6 +198,7 @@ private:
     Runtime& world_;
     std::map<std::string, std::string> tokens_;
     std::set<std::shared_ptr<Session>> sessions_;
+    bool stopping_ = false;
 };
 
 void Session::start() {
@@ -156,11 +220,11 @@ void Session::read() {
         const auto payload = beast::buffers_to_string(self->input_.data());
         self->input_.consume(self->input_.size());
         try {
-            self->hub_.handle(*self, payload);
+            self->hub_.handle(self, payload, [self]() { self->read(); });
         } catch (const std::exception&) {
             self->send(R"({"type":"error","code":"internal_error"})");
+            self->read();
         }
-        self->read();
     });
 }
 
@@ -193,7 +257,6 @@ void Session::stop() {
     beast::error_code ignored;
     beast::get_lowest_layer(socket_).socket().close(ignored);
     hub_.remove(shared_from_this());
-    id.clear();
 }
 
 std::string config(const char* name, const char* fallback = "") {
@@ -224,13 +287,17 @@ int main(int argc, char** argv) {
         const auto tokens = player_tokens();
         const auto port = std::stoi(config("FERRY_PORT", "7670"));
         if (port < 1 || port > 65535) throw std::runtime_error("Invalid FERRY_PORT.");
+        const auto db_threads = std::stoi(config("FERRY_DB_THREADS", "4"));
+        if (db_threads < 1 || db_threads > 16) throw std::runtime_error("Invalid FERRY_DB_THREADS.");
         const auto uri = config("FERRY_MONGO_URI");
         if (uri.empty()) throw std::runtime_error("Set FERRY_MONGO_URI on the game server.");
         const std::string database = config("FERRY_MONGO_DB", "ferry_demo");
         const auto script = argc > 1 ? argv[1] : "lua/world.lua";
         net::io_context context(1);
         const auto address = net::ip::make_address(config("FERRY_BIND", "127.0.0.1"));
-        Runtime world(uri, database, script);
+        Runtime world(uri, database, script,
+            [&context](std::function<void()> fn) { net::post(context, std::move(fn)); },
+            static_cast<std::size_t>(db_threads));
         Hub hub(context, {address, static_cast<unsigned short>(port)}, world, tokens);
         net::signal_set signals(context, SIGINT, SIGTERM);
         signals.async_wait([&hub](beast::error_code error, int) { if (!error) hub.stop(); });

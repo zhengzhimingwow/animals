@@ -52,18 +52,22 @@ with connect(URL, open_timeout=5) as guest:
 with connect(URL, open_timeout=5) as player_a, connect(URL, open_timeout=5) as player_b:
     assert login(player_a, "test-a")["map"]["id"] == "ferry"
     assert login(player_b, "test-b")["player"]["quest"] == "new"
-    expect(player_a, "world", lambda message: len(message["players"]) == 2)
+    expect(player_a, "event", lambda message: message["event"] == "player_joined" and message["id"] == "test-b")
 
-    send(player_a, type="move", dx=12, dy=0)
-    assert expect(player_a, "error")["code"] == "invalid_step"
-    send(player_a, type="interact", target="reed_trail")
-    assert expect(player_a, "error")["code"] == "too_far"
+    send(player_a, type="move", dx=12, dy=0, seq=10)
+    err = expect(player_a, "error")
+    assert err["code"] == "invalid_step" and err["seq"] == 10
+    send(player_a, type="interact", target="reed_trail", seq=11)
+    err = expect(player_a, "error")
+    assert err["code"] == "too_far" and err["seq"] == 11
 
-    send(player_a, type="interact", target="apothecary")
-    assert expect(player_a, "dialogue")["player"]["quest"] == "search"
+    send(player_a, type="interact", target="apothecary", seq=12)
+    dlg = expect(player_a, "dialogue")
+    assert dlg["player"]["quest"] == "search" and dlg["seq"] == 12
     move(player_a, 7, 1)
-    snapshot = expect(player_b, "world", lambda message: message["players"]["test-a"]["x"] == 9)
-    assert snapshot["players"]["test-b"]["x"] == 2
+    moved_event = expect(player_b, "event",
+        lambda message: message["event"] == "player_moved" and message["id"] == "test-a" and message["x"] == 9)
+    assert moved_event["facing"] == "right"
 
     send(player_a, type="interact", target="reed_trail")
     assert expect(player_a, "dialogue")["player"]["quest"] == "hunt"
@@ -73,7 +77,8 @@ with connect(URL, open_timeout=5) as player_a, connect(URL, open_timeout=5) as p
         assert expect(player_a, "hit")["hp"] == health
         if health:
             time.sleep(0.62)
-    expect(player_b, "world", lambda message: not message["monster"]["alive"])
+    expect(player_b, "event",
+        lambda message: message["event"] == "player_attacked" and message["id"] == "test-a" and not message["alive"])
 
     move(player_a, 8, -1)
     for _ in range(2):

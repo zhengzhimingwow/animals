@@ -38,11 +38,13 @@ var token_field: LineEdit
 var connection_message: Label
 var link_button: Button
 var world_status: Label
+var bag_status: Label
 var dialogue_title: Label
 var dialogue_body: Label
 var _movement := GridInput.new()
 var _approach_target := ""
-var _sent_commands: Array[String] = []
+var _next_seq := 1
+var _inflight: Dictionary = {}
 var connect_clock := 0.0
 var body_font: Font
 
@@ -125,6 +127,9 @@ func _build_world() -> void:
     _text(location_stack, "溪桥渡", 25, GOLD).autowrap_mode = TextServer.AUTOWRAP_OFF
     world_status = _text(location_stack, "等待进入江湖", 14, MUTE)
     world_status.autowrap_mode = TextServer.AUTOWRAP_OFF
+    bag_status = _text(location_stack, "蛇胆 0 · 铜钱 0", 14, PAPER)
+    bag_status.autowrap_mode = TextServer.AUTOWRAP_OFF
+    bag_status.hide()
 
     var dialogue := _hud_panel()
     dialogue.anchor_right = 0.70
@@ -223,7 +228,9 @@ func _connection_failed(message: String) -> void:
     pending_token = ""
     _clear_input()
     _movement = GridInput.new()
-    _sent_commands.clear()
+    _inflight.clear()
+    if bag_status:
+        bag_status.hide()
     login.show()
     link_button.disabled = false
     connection_message.text = message
@@ -257,25 +264,30 @@ func _process(delta: float) -> void:
     _pump_movement(Time.get_ticks_msec())
 
 func _send(message: Dictionary) -> bool:
-    if not socket or socket.get_ready_state() != WebSocketPeer.STATE_OPEN or _sent_commands.size() >= 24:
+    if not socket or socket.get_ready_state() != WebSocketPeer.STATE_OPEN or _inflight.size() >= 24:
         return false
-    if socket.send(JSON.stringify(message).to_utf8_buffer(), WebSocketPeer.WRITE_MODE_TEXT) != OK:
+    var payload := message.duplicate()
+    var seq := _next_seq
+    _next_seq += 1
+    payload["seq"] = seq
+    if socket.send(JSON.stringify(payload).to_utf8_buffer(), WebSocketPeer.WRITE_MODE_TEXT) != OK:
         return false
     if message["type"] != "login":
-        _sent_commands.push_back(message["type"])
+        _inflight[seq] = message["type"]
     return true
 
 func _apply(message: Dictionary) -> void:
     var kind: String = message.get("type", "")
     var reply_to := ""
-    # The server replies to each command in order. Snapshots may arrive in between.
-    if kind in ["moved", "dialogue", "hit", "error"] and not _sent_commands.is_empty():
-        reply_to = _sent_commands.pop_front()
+    if message.has("seq"):
+        var seq := int(message["seq"])
+        reply_to = String(_inflight.get(seq, ""))
+        _inflight.erase(seq)
     match kind:
         "joined":
             my_id = message["id"]
             _movement = GridInput.new()
-            _sent_commands.clear()
+            _inflight.clear()
             _approach_target = ""
             var map_info: Dictionary = message["map"]
             view.my_id = my_id
@@ -285,6 +297,7 @@ func _apply(message: Dictionary) -> void:
             login.hide()
             link_button.disabled = false
             _show_dialogue("", QUESTS.get(message["player"]["quest"], ""))
+            _update_bag(message["player"])
         "world":
             var own: Dictionary = message["players"].get(my_id, {})
             if not own.is_empty():
@@ -293,13 +306,31 @@ func _apply(message: Dictionary) -> void:
                     view.correct_step(cell)
             view.set_world(message, _movement.pending)
             world_status.text = "%d 人在线" % view.players.size()
+        "moved":
+            if message.has("x") and message.has("y"):
+                var cell := Vector2i(int(message["x"]), int(message["y"]))
+                if _movement.observe(cell):
+                    view.correct_step(cell)
+                if message.has("facing"):
+                    view.set_player_facing(my_id, String(message["facing"]))
+        "event":
+            if String(message.get("event", "")) == "player_moved" and String(message.get("id", "")) == my_id:
+                var cell := Vector2i(int(message["x"]), int(message["y"]))
+                if _movement.observe(cell):
+                    view.correct_step(cell)
+            view.apply_event(message, _movement.pending)
+            world_status.text = "%d 人在线" % view.players.size()
         "dialogue":
             _show_dialogue(message["speaker"], message["text"])
+            if message.has("player"):
+                _update_bag(message["player"])
         "hit":
             if int(message["hp"]) == 0:
                 _show_dialogue("", "击退芦滩蛇，拿到一枚蛇胆。")
             else:
                 _show_dialogue("", "击中芦滩蛇，剩余 %d 点体力。" % int(message["hp"]))
+            if message.has("player"):
+                _update_bag(message["player"])
         "error":
             var code: String = message["code"]
             var reason: String = ERRORS.get(code, "这个动作暂时无法完成。")
@@ -314,6 +345,12 @@ func _apply(message: Dictionary) -> void:
                 if code != "too_fast":
                     _show_dialogue("", reason)
 
+func _update_bag(player: Dictionary) -> void:
+    if not bag_status:
+        return
+    bag_status.text = "蛇胆 %d · 铜钱 %d" % [int(player.get("gall", 0)), int(player.get("coins", 0))]
+    bag_status.show()
+
 func _show_dialogue(speaker: String, message: String) -> void:
     dialogue_title.text = speaker
     dialogue_title.visible = not speaker.is_empty()
@@ -323,6 +360,13 @@ func _clear_input() -> void:
     _movement.clear_intent()
     _approach_target = ""
 
+func _blocked_tiles() -> Dictionary:
+    var blocked := {}
+    for id in view.features:
+        var item: Dictionary = view.features[id]
+        blocked[Vector2i(int(item["x"]), int(item["y"]))] = true
+    return blocked
+
 func _pump_movement(now: int) -> void:
     if _movement.at_goal():
         var target := _approach_target
@@ -330,7 +374,7 @@ func _pump_movement(now: int) -> void:
         if target != "" and (target != "reed_snake" or view.monster.get("alive", false)):
             _send({"type": "attack" if target == "reed_snake" else "interact", "target": target})
         return
-    var step := _movement.next_step(view.tiles, now)
+    var step := _movement.next_step(view.tiles, now, _blocked_tiles())
     if step == GridInput.OUTSIDE:
         _clear_input()
         _show_dialogue("", "到不了这个位置。")
@@ -360,7 +404,7 @@ func _on_tile(tile: Vector2i) -> void:
             target = id
             break
     _approach_target = ""
-    if not _movement.seek(view.tiles, tile, 0 if target.is_empty() else 1):
+    if not _movement.seek(view.tiles, tile, 0 if target.is_empty() else 1, _blocked_tiles()):
         _show_dialogue("", "到不了这个位置。")
         return
     _approach_target = target

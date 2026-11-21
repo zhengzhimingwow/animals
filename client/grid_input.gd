@@ -35,10 +35,10 @@ func clear_intent() -> void:
     _tap = Vector2i.ZERO
     goal = OUTSIDE
 
-func seek(tiles: Array, target: Vector2i, radius: int) -> bool:
+func seek(tiles: Array, target: Vector2i, radius: int, blocked: Dictionary = {}) -> bool:
     clear_intent()
     var previous := pending if pending != OUTSIDE else cell
-    if route_step(tiles, previous, target, radius) == OUTSIDE:
+    if route_step(tiles, previous, target, radius, blocked) == OUTSIDE:
         return false
     goal = target
     _goal_radius = radius
@@ -47,16 +47,16 @@ func seek(tiles: Array, target: Vector2i, radius: int) -> bool:
 func at_goal() -> bool:
     return pending == OUTSIDE and goal != OUTSIDE and distance(cell, goal) <= _goal_radius
 
-func next_step(tiles: Array, now: int) -> Vector2i:
+func next_step(tiles: Array, now: int, blocked: Dictionary = {}) -> Vector2i:
     if cell == OUTSIDE or pending != OUTSIDE or now < _next_step_at:
         return Vector2i.ZERO
     if goal != OUTSIDE:
-        return route_step(tiles, cell, goal, _goal_radius)
+        return route_step(tiles, cell, goal, _goal_radius, blocked)
     var step := _tap
     _tap = Vector2i.ZERO
     if step == Vector2i.ZERO and not _held.is_empty():
         step = _held[_held.keys().back()]
-    if step != Vector2i.ZERO and walkable(tiles, cell + step):
+    if step != Vector2i.ZERO and walkable(tiles, cell + step, blocked):
         return step
     return Vector2i.ZERO
 
@@ -70,14 +70,14 @@ func reject() -> void:
 static func distance(from: Vector2i, to: Vector2i) -> int:
     return absi(from.x - to.x) + absi(from.y - to.y)
 
-static func walkable(tiles: Array, tile: Vector2i) -> bool:
-    if tile.y < 1 or tile.y > tiles.size():
+static func walkable(tiles: Array, tile: Vector2i, blocked: Dictionary = {}) -> bool:
+    if tile.y < 1 or tile.y > tiles.size() or blocked.has(tile):
         return false
     var row := String(tiles[tile.y - 1])
     return tile.x >= 1 and tile.x <= row.length() and row.substr(tile.x - 1, 1) in [".", ",", "D"]
 
-static func route_step(tiles: Array, start: Vector2i, finish: Vector2i, radius: int) -> Vector2i:
-    if not walkable(tiles, start):
+static func route_step(tiles: Array, start: Vector2i, finish: Vector2i, radius: int, blocked: Dictionary = {}) -> Vector2i:
+    if not walkable(tiles, start, blocked):
         return OUTSIDE
     if distance(start, finish) <= radius:
         return Vector2i.ZERO
@@ -89,7 +89,7 @@ static func route_step(tiles: Array, start: Vector2i, finish: Vector2i, radius: 
         head += 1
         for direction in DIRECTIONS:
             var neighbor: Vector2i = tile + direction
-            if first_steps.has(neighbor) or not walkable(tiles, neighbor):
+            if first_steps.has(neighbor) or not walkable(tiles, neighbor, blocked):
                 continue
             var step: Vector2i = direction if tile == start else first_steps[tile]
             if distance(neighbor, finish) <= radius:
