@@ -2,7 +2,7 @@ extends RefCounted
 ## The world confirms cells. At most one request may be previewed locally.
 
 const OUTSIDE := Vector2i(-1, -1)
-const STEP_INTERVAL_MS := 176
+const STEP_INTERVAL_MS := 255
 const DIRECTIONS := [Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT, Vector2i.UP]
 
 var cell := OUTSIDE

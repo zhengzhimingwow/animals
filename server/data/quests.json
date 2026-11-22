@@ -1,0 +1,68 @@
+{
+  "default_map": "ferry",
+  "move_cooldown_ms": 230,
+  "attack_cooldown_ms": 600,
+  "quest_hints": {
+    "new": "去回春药铺门口，和兔药师说话。",
+    "search": "去渡口船坊问问牛船工，沿东岸芦苇滩寻找药箱。",
+    "hunt": "在东岸芦苇滩击败芦滩蛇，带蛇胆回药铺交差。",
+    "done": "药师已经配好了药。渡口恢复了往日的秩序。"
+  },
+  "interactions": {
+    "apothecary": [
+      {
+        "when": { "quest": "new", "found_trail": true },
+        "changes": { "quest": "hunt" },
+        "text": "你已经发现了空药箱？原来的药救不了急。药箱旁有芦滩蛇，取一枚蛇胆就能配药。"
+      },
+      {
+        "when": { "quest": "new" },
+        "changes": { "quest": "search" },
+        "text": "替渡口治伤的药没到。你去东边船坊找牛船工问问，或者沿河看看有没有留下什么。"
+      },
+      {
+        "when": { "quest": "search" },
+        "text": "船从东边过来。芦苇滩水浅，东西落水常搁在那儿。"
+      },
+      {
+        "when": { "quest": "hunt", "min_gall": 1 },
+        "changes": { "quest": "done", "delta_gall": -1, "delta_coins": 12 },
+        "text": "药能配齐了。这十二枚铜钱你收下，渡口的人记得你的情。"
+      },
+      {
+        "when": { "quest": "hunt" },
+        "text": "在芦苇滩找一枚蛇胆，回来我就能配药。"
+      },
+      {
+        "when": {},
+        "text": "伤药已经配好了。路过的话，去溪桥客栈喝盏茶吧。"
+      }
+    ],
+    "boatman": [
+      {
+        "when": { "found_trail": true },
+        "text": "你找到了空箱？昨夜在东岸芦苇滩搁浅，原来的药全浸了水。"
+      },
+      {
+        "when": {},
+        "text": "昨夜雾大，船在东边芦苇滩搁浅了。你沿着河岸往东南下去看看。"
+      }
+    ],
+    "reed_trail": [
+      {
+        "when": { "found_trail": false, "quest": "search" },
+        "changes": { "found_trail": true, "quest": "hunt" },
+        "text": "空药箱卡在断缆旁，芦苇深处有蛇爬过的痕迹。箱盖夹着药师的便笺，上面写着急用时可用蛇胆替代。"
+      },
+      {
+        "when": { "found_trail": false },
+        "changes": { "found_trail": true },
+        "text": "空药箱卡在断缆旁，芦苇深处有蛇爬过的痕迹。"
+      },
+      {
+        "when": {},
+        "text": "空药箱卡在断缆旁，芦苇深处有蛇爬过的痕迹。"
+      }
+    ]
+  }
+}

@@ -7,6 +7,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
+#include <fstream>
 #include <iostream>
 #include <mutex>
 #include <optional>
@@ -118,6 +119,41 @@ std::string lua_error_text(lua_State* state) {
 
 Json failure(const char* code) {
     return {{"type", "error"}, {"code", code}};
+}
+
+Json read_json_file(const std::filesystem::path& path) {
+    std::ifstream input(path);
+    if (!input) throw std::runtime_error("Could not open data file: " + path.string());
+    return Json::parse(input);
+}
+
+Json load_content(const std::filesystem::path& script) {
+    const char* env_dir = std::getenv("FERRY_DATA_DIR");
+    std::filesystem::path data_dir = (env_dir && *env_dir)
+        ? std::filesystem::path(env_dir)
+        : script.parent_path().parent_path() / "data";
+    if (!std::filesystem::exists(data_dir)) data_dir = "data";
+    const auto maps_dir = data_dir / "maps";
+    if (!std::filesystem::is_directory(maps_dir))
+        throw std::runtime_error("Missing data/maps directory: " + maps_dir.string());
+
+    Json content = {{"maps", Json::object()}, {"quests", Json::object()}};
+    for (const auto& entry : std::filesystem::directory_iterator(maps_dir)) {
+        if (!entry.is_regular_file() || entry.path().extension() != ".json") continue;
+        auto map_def = read_json_file(entry.path());
+        const std::string map_id = map_def.contains("id") && map_def["id"].is_string()
+            ? map_def["id"].get<std::string>()
+            : entry.path().stem().string();
+        map_def["id"] = map_id;
+        content["maps"][map_id] = std::move(map_def);
+    }
+    if (content["maps"].empty())
+        throw std::runtime_error("No map JSON files found in: " + maps_dir.string());
+    const auto quests_path = data_dir / "quests.json";
+    if (std::filesystem::exists(quests_path)) {
+        content["quests"] = read_json_file(quests_path);
+    }
+    return content;
 }
 
 // Asynchronous MongoDB worker pool with per-player FIFO serialization.
@@ -255,18 +291,20 @@ class Runtime::Impl {
 public:
     Impl(const std::string& uri, const std::string& database, const std::filesystem::path& script,
         Post post, std::size_t db_threads)
-        : store_(uri, database, db_threads), post_(std::move(post)) {
+        : script_(script), store_(uri, database, db_threads), post_(std::move(post)) {
         if (!post_) throw std::runtime_error("Missing async post dispatcher.");
         if (!lua_) throw std::runtime_error("could not open Lua runtime");
         luaL_openlibs(lua_.get());
         auto* state = lua_.get();
         if (luaL_dofile(state, script.string().c_str()) != LUA_OK)
             throw std::runtime_error(lua_error_text(state));
+        const auto content = load_content(script);
         lua_getfield(state, -1, "new");
         bind(state, load_record);
         bind(state, save_record);
         lua_pushcfunction(state, monotonic_clock);
-        if (lua_pcall(state, 3, 1, 0) != LUA_OK)
+        push_json(state, content);
+        if (lua_pcall(state, 4, 1, 0) != LUA_OK)
             throw std::runtime_error(lua_error_text(state));
         world_ = luaL_ref(state, LUA_REGISTRYINDEX);
         lua_pop(state, 1);
@@ -306,6 +344,24 @@ public:
             return nullptr;
         }
         return read_lua(state, -1);
+    }
+
+    Json reload() {
+        try {
+            const auto content = load_content(script_);
+            auto* state = lua_.get();
+            StackScope stack(state);
+            begin(state, "reload");
+            push_json(state, content);
+            if (lua_pcall(state, 2, 1, 0) != LUA_OK) {
+                std::cerr << "Config reload failed: " << lua_error_text(state) << '\n';
+                return nullptr;
+            }
+            return read_lua(state, -1);
+        } catch (const std::exception& error) {
+            std::cerr << "Config reload failed: " << error.what() << '\n';
+            return nullptr;
+        }
     }
 
     Json snapshot() {
@@ -489,6 +545,7 @@ private:
         return lua_yield(co, 0);
     }
 
+    std::filesystem::path script_;
     MongoStore store_;
     Post post_;
     std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
@@ -520,5 +577,7 @@ void Runtime::leave(const std::string& id, LeaveCallback done) {
 }
 
 Runtime::Json Runtime::tick() { return impl_->tick(); }
+
+Runtime::Json Runtime::reload() { return impl_->reload(); }
 
 Runtime::Json Runtime::snapshot() { return impl_->snapshot(); }

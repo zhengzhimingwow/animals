@@ -1,0 +1,69 @@
+{
+  "id": "ferry",
+  "name": "溪桥渡",
+  "scene": "ferry",
+  "spawn": { "x": 3, "y": 4 },
+  "walkable_tiles": [".", ",", "D"],
+  "tiles": [
+    "##################",
+    "####..####..##~~~~",
+    "##...........~D~~~",
+    "#.............D..#",
+    "#................#",
+    "#....##......,,,,#",
+    "#...........,,,,,#",
+    "#...........,,,,,#",
+    "##...##.....,,,,,#",
+    "###..##......,,,##",
+    "####........######",
+    "##################"
+  ],
+  "plaques": [
+    { "title": "回春药铺", "x": 2.15, "y": 2.25, "z": 1.25 },
+    { "title": "溪桥客栈", "x": 8.20, "y": 2.78, "z": 1.25 },
+    { "title": "渡口船坊", "x": 12.95, "y": 1.90, "z": 1.35 },
+    { "title": "望江亭", "x": 6.50, "y": 2.75, "z": 9.50 }
+  ],
+  "features": {
+    "apothecary": {
+      "kind": "npc",
+      "label": "兔药师",
+      "model": "rabbit",
+      "x": 3,
+      "y": 3,
+      "rest_yaw": 0.28,
+      "blocking": true
+    },
+    "boatman": {
+      "kind": "npc",
+      "label": "牛船工",
+      "model": "ox",
+      "x": 13,
+      "y": 3,
+      "rest_yaw": -0.24,
+      "blocking": true
+    },
+    "reed_trail": {
+      "kind": "prop",
+      "label": "空药箱",
+      "model": "",
+      "x": 14,
+      "y": 8,
+      "blocking": true
+    },
+    "reed_snake": {
+      "kind": "monster",
+      "label": "芦滩蛇",
+      "model": "snake",
+      "x": 16,
+      "y": 7,
+      "rest_yaw": -0.65,
+      "blocking": true,
+      "max_hp": 3,
+      "respawn_ms": 10000,
+      "drop_item": "gall",
+      "drop_count": 1
+    }
+  },
+  "portals": []
+}

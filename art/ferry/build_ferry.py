@@ -118,7 +118,8 @@ REED = palette("Reed blade", "566c4a 647c4f 839057 9d9a58 b2a368")
 WICKER = palette("Woven rush", "7c6542 9e7950 b18d5e c0a576")
 POT = palette("Glazed stoneware", "344d4a 4e6460 607a6d 877245 805442", rough=.45)
 CLOTH = palette("Rust silk", "824331 a44f37 c15e3e d17a46")
-LANTERN = palette("Lantern paper", "bd6135 d48541 eca85c", emission=.19)
+VERMILION = material("Vermilion lacquer", "9c3528", rough=.42)
+LANTERN = palette("Lantern paper", "bd6135 d48541 eca85c", emission=.32)
 METAL = material("Oxidized bronze", "806940", rough=.48)
 INK = material("Blackened fir", "2f3028")
 GOLD = material("Ochre paint", "e6bd79")
@@ -271,22 +272,18 @@ def rock(mesh, x, y, z, rx, ry, h, rng=RNG):
                  rng.choice(STONE[2:] + MOSS))
 
 
-# The bank includes every walkable cell apart from the wooden landing.
-# Positive values in this outline are map row distances, negated below.
+# Expanded 18x12 ferry town island outline. Positive values are map row distances.
 BANK_OUTLINE = [
-    (.06, .48), (.54, .13), (1.25, -.02), (2.06, .13), (2.87, .28), (3.67, .14),
-    (4.13, .24), (4.79, .14), (5.47, .34), (6.16, .27), (6.78, .46),
-    (7.05, .90), (7.15, 1.47), (7.06, 2.02), (7.27, 2.49),
-    (7.47, 2.86), (7.93, 3.03), (8.62, 3.00), (9.09, 3.0), (9.71, 3.03),
-    (10.25, 2.97), (10.80, 3.07), (11.27, 3.18), (11.71, 3.49), (11.87, 4.06),
-    (11.74, 4.64), (11.94, 5.13), (12.08, 5.64), (11.89, 6.18), (11.96, 6.70),
-    (11.69, 7.21), (11.18, 7.45), (10.63, 7.51), (10.11, 7.71), (9.61, 7.70),
-    (9.13, 7.96), (8.45, 7.92), (8.13, 8.02), (7.47, 7.92), (6.91, 8.06),
-    (6.24, 7.94), (5.62, 8.03), (4.90, 7.84), (4.32, 7.96), (3.76, 7.86),
-    (3.01, 7.93), (2.49, 7.70), (1.95, 7.79), (1.41, 7.65), (.83, 7.72),
-    (.42, 7.37), (.19, 6.83), (.01, 6.47), (.08, 5.82), (-.06, 5.35),
-    (.06, 4.75), (-.09, 4.10), (.09, 3.60), (.03, 3.03), (.17, 2.54),
-    (.02, 2.05), (.17, 1.65), (.03, 1.13),
+    (.15, .55), (.85, .18), (1.90, .06), (3.10, .14), (4.40, .26), (5.80, .18),
+    (7.20, .10), (8.60, .08), (10.00, .16), (11.30, .24), (12.60, .28), (13.65, .48),
+    (13.95, 1.10), (14.05, 1.85), (14.00, 2.55), (14.25, 3.05),
+    (15.20, 3.10), (16.10, 3.05), (16.95, 3.18), (17.55, 3.55), (17.85, 4.30),
+    (17.75, 5.20), (17.92, 6.10), (17.80, 7.05), (17.90, 8.05), (17.65, 9.05),
+    (17.25, 9.85), (16.50, 10.30), (15.55, 10.55), (14.40, 10.72), (13.20, 10.95),
+    (12.20, 11.40), (11.20, 11.65), (9.90, 11.75), (8.60, 11.82), (7.30, 11.78),
+    (6.00, 11.84), (4.80, 11.72), (3.85, 11.42), (3.00, 10.90), (2.10, 10.45),
+    (1.25, 9.95), (.62, 9.25), (.28, 8.35), (.12, 7.35), (.06, 6.30),
+    (.02, 5.20), (.08, 4.15), (.16, 3.10), (.08, 2.15), (.12, 1.25),
 ]
 
 
@@ -356,30 +353,32 @@ def graded_shore(rows):
 def stone_path():
     path = Mesh("Individually cut flagstones and grit", LAND)
     rectangles = [
-        (1.16, 10.92, 3.10, 3.94),
-        (1.16, 4.90, 2.13, 3.10),
-        (2.25, 5.73, 1.24, 2.13),
-        (2.13, 5.99, 3.94, 4.77),
-        (2.22, 3.17, 4.77, 6.94),
-        (7.17, 10.94, 3.94, 4.79),
-        (7.36, 8.43, 4.79, 6.88),
-        (8.32, 8.74, 2.95, 3.10),
+        (1.15, 16.85, 3.08, 4.88),   # Main east-west ferry avenue
+        (1.90, 4.95, 2.15, 3.08),    # Apothecary forecourt
+        (6.40, 10.60, 2.15, 3.08),   # Inn forecourt
+        (11.80, 13.90, 2.15, 3.08),  # Boathouse forecourt
+        (14.10, 14.90, 2.95, 3.15),  # Pier approach
+        (2.85, 4.25, 4.88, 10.75),   # West lane toward south embankment
+        (8.05, 9.45, 4.88, 10.75),   # Central lane past pavilion
+        (4.25, 11.40, 7.05, 8.05),   # Cross-plaza north of pavilion
+        (4.10, 11.40, 10.10, 10.95), # South willow embankment walk
+        (11.40, 14.40, 4.88, 7.90),  # Path toward eastern reed shoal
     ]
     for left, right, start, end in rectangles:
-        rows = round((end - start) / .41)
+        rows = round((end - start) / .45)
         rows = max(1, rows)
         depth = (end - start) / rows
         for row in range(rows):
             offset = start + row * depth
             x = left
             while x < right - .07:
-                length = min(right - x, RNG.uniform(.34, .92))
-                if right - (x + length) < .22:
+                length = min(right - x, RNG.uniform(.38, .96))
+                if right - (x + length) < .24:
                     length = right - x
-                gap = RNG.uniform(.012, .039)
+                gap = RNG.uniform(.014, .040)
                 x0, x1 = x + gap, x + length - gap
                 y0, y1 = -offset - depth + gap, -offset - gap
-                tilt = RNG.uniform(-.036, .036)
+                tilt = RNG.uniform(-.032, .032)
                 chip = min(.06, (x1 - x0) * .18, (y1 - y0) * .18)
                 corners = [(x0 + chip, y0 + tilt), (x1 - chip, y0),
                            (x1, y0 + chip), (x1 - chip * .25, y1 - chip + tilt),
@@ -391,19 +390,20 @@ def stone_path():
                               FLAGSTONE, lambda p, u=u, v=v: (u + p[0] * .32, v + p[1] * .36),
                               RNG.choice(STONE[1:4]))
                 x += length
-    for _ in range(114):
-        x = RNG.uniform(1.1, 10.9)
-        y = RNG.choice((-3.05, -3.99)) + RNG.uniform(-.075, .075)
-        r = RNG.uniform(.012, .048)
+    for _ in range(160):
+        x = RNG.uniform(1.1, 16.8)
+        y = RNG.choice((-3.04, -4.92)) + RNG.uniform(-.08, .08)
+        r = RNG.uniform(.014, .050)
         rock(path, x, y, -.026, r, r * .8, r * .55)
     path.finish()
 
 
 def flats():
     mesh = Mesh("Exposed mud, patches of sand and gravel", LAND)
-    islands = [(8.63, -5.72, 1.21, .32), (9.56, -6.14, 1.22, .54),
-               (9.06, -6.77, 1.46, .21), (10.43, -5.41, 1.1, .39),
-               (10.56, -6.73, .72, .46), (10.52, -3.38, .35, .23)]
+    islands = [
+        (13.8, -6.2, 1.5, .65), (15.4, -7.2, 1.7, .90), (14.4, -8.5, 1.6, .75),
+        (16.2, -8.8, 1.3, .78), (15.1, -9.8, 1.4, .55), (16.4, -5.8, 1.0, .48),
+    ]
     for x, y, rx, ry in islands:
         n = 23
         radius = [RNG.uniform(.85, 1.09) for _ in range(n)]
@@ -579,97 +579,156 @@ def sign_lettering(group, x, y, z):
     obj.select_set(False)
 
 
+def banner_pole(mesh, flags, x, y, height, flag_color, gold_trim=True):
+    tube(mesh, [(x, y, 0), (x, y, height)], [.032, .022], WOOD[2], sides=8)
+    tube(mesh, [(x, y, height - .12), (x + .52, y, height - .18)], [.016, .012], WOOD[3], sides=6)
+    lathe(mesh, x, y, height, [(.024, 0), (.042, .035), (.012, .085)], GOLD, sides=10)
+    # Multi-segment cloth banner so GPU wind shader ripples it smoothly
+    cols, rows = 6, 8
+    w, h = .44, .72
+    z_top = height - .18
+    x0 = x + .06
+    verts = []
+    for r in range(rows + 1):
+        for c in range(cols + 1):
+            u = c / cols
+            v = r / rows
+            verts.append((x0 + u * w, y - .015 * sin(u * pi), z_top - v * h))
+    faces = []
+    for r in range(rows):
+        for c in range(cols):
+            a = r * (cols + 1) + c
+            b = a + 1
+            d = a + (cols + 1)
+            e = d + 1
+            faces.append((a, b, e, d))
+    flags.add(verts, faces, flag_color, smooth=True)
+    if gold_trim:
+        block(flags, (x0 + w * .5, y - .022, z_top - h * .38), (.20, .016, .20), GOLD, .004)
+
+
+def apothecary_shop():
+    walls = Mesh("Apothecary stone plinth and whitewashed hall", INN)
+    lattice = Mesh("Apothecary counter, herb drawers and shutters", INN)
+    roofing = Mesh("Apothecary swept tile roof", INN)
+    furn = Mesh("Apothecary herb trays, jars and mortar", INN)
+    flags = Mesh("Apothecary cloth banner", DETAIL)
+    x, y, width, depth = 2.15, -1.25, 2.30, 1.48
+    front = y - depth / 2
+    base, wall_top = .14, 1.32
+
+    block(walls, (x, y - .04, base / 2), (width + .22, depth + .22, base), STONE[1], .03)
+    block(walls, (x, y, (base + wall_top) / 2), (width, depth, wall_top - base), LIME[0], .02)
+    for side in (-1, 1):
+        sx = x + side * width / 2
+        walls.polygon([(sx, y - depth / 2, wall_top - .03), (sx, y + depth / 2, wall_top - .03),
+                       (sx, y, 1.88)], LIME[1])
+        for py in (front - .04, y + depth / 2):
+            block(walls, (sx, py, .76), (.09, .09, 1.24), WOOD[1], .01)
+    for px in (x - .48, x + .48):
+        block(walls, (px, front - .04, .76), (.085, .085, 1.24), WOOD[1], .01)
+    block(walls, (x, front - .04, 1.26), (width + .14, .10, .07), WOOD[1], .01)
+    # Open apothecary service counter & warm interior
+    block(lattice, (x, front + .14, .68), (1.10, .12, .96), INK)
+    block(lattice, (x, front - .02, .42), (1.16, .24, .46), WOOD[2], .012)
+    block(lattice, (x, front - .04, .66), (1.24, .30, .05), WOOD[4], .008)
+    for side in (-1, 1):
+        window(lattice, x + side * .80, front - .02, .74, .44, .42, warm=True)
+        lantern(furn, x + side * .92, front - .24, 1.04, .92)
+    stairs(walls, x, front - .22, .80)
+    curved_roof(roofing, x, y, width + .54, depth + .58, 1.98, .60)
+    # Hanging dried herb bundles under eaves
+    for i in range(7):
+        px = x - .85 + i * .28
+        tube(furn, [(px, front - .18, 1.02), (px, front - .19, .86)], [.006, .004], WICKER[1], sides=4)
+        for j in range(3):
+            dy = .022 * (j - 1)
+            reed_leaf(furn, [(px, front - .19, .89), (px + dy * .6, front - .21, .84),
+                             (px + dy, front - .22, .78)], .016, LEAVES[1 + (i + j) % 3])
+    # Herb-drying woven bamboo trays (晒药竹匾) on wooden stands outside the shop!
+    for tx, ty, herb_mat in ((x - .92, front - .46, LEAVES[2]), (x + .98, front - .42, GOLD)):
+        for leg in ((-.16, -.12), (.16, -.12), (-.16, .12), (.16, .12)):
+            tube(furn, [(tx + leg[0], ty + leg[1], 0), (tx + leg[0], ty + leg[1], .28)],
+                 [.018, .016], WOOD[2], sides=6)
+        lathe(furn, tx, ty, .28, [(.26, 0), (.31, .03), (.29, .055), (.25, .035)], WICKER[2], sides=18)
+        lathe(furn, tx, ty, .30, [(.24, 0), (.22, .035), (.08, .065), (0, .072)], herb_mat, sides=16)
+    # Medicine jars & stone mortar
+    for idx, ox in enumerate((-.38, -.16, .20, .42)):
+        jar(furn, x + ox, front - .04, .685, .13 + .02 * (idx % 2), POT[idx % 5])
+    lathe(furn, x + .68, front - .28, .0, [(.09, 0), (.12, .12), (.13, .22), (.10, .22), (.08, .12)],
+          STONE[2], sides=14)
+    # Tall crimson apothecary banner + hanging wooden medicine gourd
+    banner_pole(furn, flags, x + 1.32, front - .22, 2.25, VERMILION)
+    lathe(furn, x - 1.24, front - .20, .92, [(.01, 0), (.09, .06), (.05, .16), (.07, .24), (.02, .30)],
+          GOLD, sides=12)
+    for mesh in (walls, lattice, roofing, furn, flags):
+        mesh.finish()
+
+
 def inn():
     walls = Mesh("Inn stone plinth, plaster and timber frame", INN)
     lattice = Mesh("Shutters, balustrades and herb shop", INN)
     roofing = Mesh("Inn swept barrel-tile gables and porch canopy", INN)
     furn = Mesh("Inn paper lanterns, pottery and shopfront", INN)
-    x, y, width, depth = 1.12, -.90, 1.56, 1.38
+    flags = Mesh("Inn wine cloth banner", DETAIL)
+    x, y, width, depth = 8.20, -1.25, 2.60, 1.56
     front = y - depth / 2
-    base, story, beam, wall_top = .138, .98, 1.08, 1.82
+    base, story, beam, wall_top = .15, 1.02, 1.12, 1.92
 
-    block(walls, (x, y - .043, base / 2), (width + .15, depth + .18, base), STONE[1], .029)
-    block(walls, (x, y - .05, base - .005), (width + .176, depth + .194, .051), STONE[3], .013)
+    block(walls, (x, y - .043, base / 2), (width + .22, depth + .22, base), STONE[1], .03)
+    block(walls, (x, y - .05, base - .005), (width + .25, depth + .24, .052), STONE[3], .014)
     for side in (-1, 1):
         side_x = x + side * width / 2
         block(walls, (side_x, y, (base + wall_top) / 2),
-              (.072, depth, wall_top - base), LIME[0 if side > 0 else 2], .018)
+              (.085, depth, wall_top - base), LIME[0 if side > 0 else 2], .018)
         walls.polygon([(side_x, y - depth / 2, wall_top - .033),
-                       (side_x, y + depth / 2, wall_top - .033), (side_x, y, 2.30)], LIME[0])
-        for i in range(12):
-            width_of_cut = RNG.uniform(.088, .15)
-            block(walls, (side_x + side * .042, y - depth * .48 + i * depth / 12, .25),
-                  (.035, width_of_cut, RNG.uniform(.08, .13)), STONE[(i % 3) + 1], .011)
+                       (side_x, y + depth / 2, wall_top - .033), (side_x, y, 2.48)], LIME[0])
         for i in range(2):
-            s_y = y + .24 - i * .40
-            block(walls, (side_x + side * .045, s_y, 1.39), (.028, .18, .21), WOOD[0], .007)
-            for n in (-1, 1):
-                block(walls, (side_x + side * .066, s_y + n * .044, 1.39),
-                      (.028, .013, .177), WOOD[4])
-        for i in range(32):
-            py = y + RNG.uniform(-.65, .65)
-            z = RNG.uniform(.31, .47) if i < 22 else RNG.uniform(1.67, 1.81)
-            block(walls, (side_x + side * .036, py, z),
-                  (.008, RNG.uniform(.026, .107), RNG.uniform(.015, .036)), RNG.choice(LIME[2:]))
-
+            s_y = y + .28 - i * .48
+            block(walls, (side_x + side * .05, s_y, 1.46), (.03, .22, .24), WOOD[0], .008)
     block(walls, (x, y + depth / 2, (base + wall_top) / 2),
-          (width, .082, wall_top - base), LIME[2])
-    block(walls, (x, front + .065, 1.46), (width, .112, .73), LIME[1], .012)
-    for post_x in (x - width / 2, x - .303, x + .304, x + width / 2):
+          (width, .085, wall_top - base), LIME[2])
+    block(walls, (x, front + .065, 1.52), (width, .112, .78), LIME[1], .012)
+    for post_x in (x - width / 2, x - .52, x + .52, x + width / 2):
         for post_y in (front - .035, y + depth / 2):
-            block(walls, (post_x, post_y, .98), (.084, .083, 1.70), WOOD[1], .010)
-            block(walls, (post_x, post_y, .207), (.113, .112, .102), STONE[2], .012)
-    for z in (.20, .966, 1.14, 1.75):
-        block(walls, (x, front - .038, z), (width + .103, .092, .063), WOOD[1], .010)
-    for i in range(14):
-        px = x - width / 2 + .063 + i * .108
-        textured_board(lattice, px, y - depth / 2 - .14, .152, .293, .101, .041, angle=pi / 2)
-    stairs(walls, x, front - .265, .64)
+            block(walls, (post_x, post_y, 1.02), (.092, .092, 1.82), VERMILION if post_y < y else WOOD[1], .010)
+            block(walls, (post_x, post_y, .21), (.125, .125, .11), STONE[2], .012)
+    for z in (.21, 1.00, 1.18, 1.84):
+        block(walls, (x, front - .038, z), (width + .14, .096, .068), WOOD[1], .010)
+    stairs(walls, x, front - .28, .92)
     for side in (-1, 1):
-        wing = x + side * .525
-        block(lattice, (wing, front + .04, .579), (.402, .074, .710), WOOD[0], .009)
-        for i in range(6):
-            plank_x = wing + (i - 2.5) * .064
-            block(lattice, (plank_x, front - .011, .334), (.056, .041, .235),
-                  WOOD[2 + (i % 3)], .006)
-        window(lattice, wing, front - .016, .674, .316, .368)
-        window(lattice, wing, front - .088, 1.433, .316, .385, warm=side > 0)
-        lantern(furn, wing + side * .158, front - .234, .925, .87)
-    block(lattice, (x, front + .19, .55), (.49, .073, .697), INK)
-    for side in (-1, 1):
-        planks_x = x + .22 * side
-        for i in range(4):
-            block(lattice, (planks_x + (i - 1.5) * .033, front + .065, .534),
-                  (.031, .046, .622), WOOD[2 + (i % 3)], .004)
-        block(lattice, (x + side * .16, front + .036, .63), (.035, .024, .04), METAL, .007)
-    for i in range(6):
-        px = x + (i - 2.5) * .28
-        block(lattice, (px, front - .105, 1.21), (.037, .031, .162), WOOD[3], .005)
-    block(lattice, (x, front - .128, 1.297), (width + .034, .043, .031), WOOD[2], .006)
-    window(lattice, x, front - .079, 1.445, .30, .383, warm=True)
-
-    curved_roof(roofing, x, y, 1.97, 1.86, 2.34, .59)
-    curved_roof(roofing, x, front + .155, 1.92, .99, 1.21, .25)
+        wing = x + side * .86
+        block(lattice, (wing, front + .04, .60), (.56, .076, .74), WOOD[0], .009)
+        window(lattice, wing, front - .016, .70, .42, .40, warm=True)
+        window(lattice, wing, front - .088, 1.48, .42, .42, warm=True)
+        lantern(furn, wing + side * .22, front - .26, .96, .95)
+    block(lattice, (x, front + .19, .58), (.68, .076, .74), INK)
     for i in range(9):
-        rafter_x = x + (i - 4) * .194
-        block(roofing, (rafter_x, front - .273, .987), (.039, .245, .035), WOOD[0], .007)
-    block(lattice, (x, front - .153, .911), (.59, .051, .144), WOOD[4], .014)
-    block(lattice, (x, front - .184, .911), (.555, .035, .12), INK, .012)
-    sign_lettering(INN, x, front - .205, .913)
-    for i, offset in enumerate((-.73, -.57, .56, .71)):
-        jar(furn, x + offset, front - (.19 + .045 * (i % 2)), .168,
-            .16 + .038 * (i % 2), POT[(i + 1) % 5])
-    basket(furn, x + .81, front - .26, -.02, .196)
-    for i in range(5):
-        px = x - .63 + i * .084
-        ends = [(px, front - .20, .835), (px, front - .214, .714)]
-        tube(furn, ends, [.005, .004], WICKER[1], sides=4)
-        for j in range(3):
-            dy = .019 * (j - 1)
-            pts = [(px, front - .214, .735), (px + dy * .45, front - .223, .722),
-                   (px + dy * .8, front - .241, .701), (px + dy, front - .248, .690)]
-            reed_leaf(furn, pts, .012, BROWN[2 + j % 2])
-    for mesh in (walls, lattice, roofing, furn):
+        px = x + (i - 4) * .28
+        block(lattice, (px, front - .11, 1.25), (.038, .032, .18), VERMILION, .005)
+    block(lattice, (x, front - .13, 1.35), (width + .08, .045, .034), WOOD[2], .006)
+    window(lattice, x, front - .079, 1.50, .46, .42, warm=True)
+
+    curved_roof(roofing, x, y, width + .56, depth + .56, 2.52, .64)
+    curved_roof(roofing, x, front + .16, width + .48, 1.08, 1.28, .28)
+    block(lattice, (x, front - .16, .94), (.82, .055, .16), WOOD[4], .014)
+    block(lattice, (x, front - .19, .94), (.76, .036, .13), INK, .012)
+    sign_lettering(INN, x, front - .215, .94)
+    # Outdoor teahouse table, benches & ceramic teapot on forecourt!
+    tx, ty = x + 1.18, front - .42
+    block(furn, (tx, ty, .34), (.46, .34, .04), WOOD[3], .008)
+    for lx in (-.18, .18):
+        for ly in (-.12, .12):
+            block(furn, (tx + lx, ty + ly, .17), (.04, .04, .34), WOOD[1], .005)
+    for by in (-.26, .26):
+        block(furn, (tx, ty + by, .20), (.42, .12, .035), WOOD[2], .006)
+    lathe(furn, tx - .06, ty, .36, [(.04, 0), (.065, .04), (.055, .09), (.02, .11)], POT[1], sides=10)
+    lathe(furn, tx + .09, ty + .04, .36, [(.024, 0), (.028, .035)], LIME[0], sides=8)
+    # Tall crimson wine banner beside the inn
+    banner_pole(furn, flags, x - 1.48, front - .24, 2.55, CLOTH[2])
+    for i, offset in enumerate((-1.05, -.84, .82)):
+        jar(furn, x + offset, front - .22, .168, .18, POT[(i + 1) % 5])
+    for mesh in (walls, lattice, roofing, furn, flags):
         mesh.finish()
 
 
@@ -677,7 +736,7 @@ def boathouse():
     walls = Mesh("Boathouse stone sill and boarded timber siding", BOAT)
     roofing = Mesh("Boathouse fired tile gable and reed awning", BOAT)
     tools = Mesh("Net frame, drying float line, lantern and casks", BOAT)
-    x, y, width, depth = 6.49, -1.065, .85, 1.11
+    x, y, width, depth = 12.95, -1.35, 1.38, 1.30
     front = y - depth / 2
     block(walls, (x, y - .063, .052), (width + .138, depth + .17, .145), STONE[2], .016)
     block(walls, (x, y, .527), (width - .030, depth - .020, .86), INK)
@@ -706,7 +765,7 @@ def boathouse():
     block(walls, (x - .112, front - .085, .499), (.028, .017, .048), METAL, .004)
     window(walls, x + .22, front - .019, .625, .203, .248)
     stairs(walls, x - .20, front - .032, .31)
-    curved_roof(roofing, x, y, 1.139, 1.45, 1.427, .47)
+    curved_roof(roofing, x, y, width + .36, depth + .42, 1.56, .48)
     for i in range(22):
         xx = x + (i - 10.5) * .048
         cube_z = 1 + .017 * abs(xx - x)
@@ -748,18 +807,19 @@ def rope_coil(mesh, x, y, z, radius, mat):
 def landing():
     dock = Mesh("Ferry landing planks, pilings and mooring rope", BOAT)
     skiff = Mesh("Open timber skiff, oar and straw hamper", BOAT)
-    block(dock, (8.50, -2.335, -.055), (.92, 1.32, .031), WOOD[0], .006)
-    for i in range(13):
-        y = -1.69 - i * .108
-        x = 8.50 + RNG.uniform(-.022, .022)
+    dx_off, dy_off = 6.0, -.25
+    block(dock, (8.50 + dx_off, -2.335 + dy_off, -.055), (.96, 1.65, .031), WOOD[0], .006)
+    for i in range(16):
+        y = -1.62 + dy_off - i * .108
+        x = 8.50 + dx_off + RNG.uniform(-.022, .022)
         textured_board(dock, x, y, -.020 + RNG.uniform(-.006, .004),
-                       1.025 + RNG.uniform(-.033, .045), .103, .062, RNG.uniform(-.016, .016))
+                       1.06 + RNG.uniform(-.033, .045), .103, .062, RNG.uniform(-.016, .016))
         for n in (-1, 1):
-            lathe(dock, x + n * .442, y, .012, [(.013, -.005), (.009, .003)], METAL, sides=6)
-    for x in (8.06, 8.94):
-        block(dock, (x, -2.27, -.126), (.118, 1.41, .116), WOOD[0], .016)
-        for n, y in enumerate((-1.67, -2.29, -2.85)):
-            h = .282 - (n == 1) * .157
+            lathe(dock, x + n * .455, y, .012, [(.013, -.005), (.009, .003)], METAL, sides=6)
+    for x in (8.04 + dx_off, 8.96 + dx_off):
+        block(dock, (x, -2.35 + dy_off, -.126), (.118, 1.72, .116), WOOD[0], .016)
+        for n, y in enumerate((-1.62 + dy_off, -2.35 + dy_off, -3.05 + dy_off)):
+            h = .30 - (n == 1) * .157
             tube(dock, [(x, y, -.35), (x + .011, y + .006, -.067), (x + .018, y, h)],
                  [.053, .058, .048], WOOD[1 + n], sides=8)
             if n == 1:
@@ -768,13 +828,13 @@ def landing():
                 z = h - .080 + .014 * ring
                 lathe(dock, x + .013, y, z, [(.052, 0), (.057, .007), (.053, .013)],
                       WICKER[ring], 9)
-    rope_coil(dock, 8.71, -1.89, .016, .105, WICKER[2])
-    tube(dock, [(8.955, -1.683, .213), (9.072, -1.618, .129),
-                (9.169, -1.514, -.052), (9.292, -1.394, -.041)],
+    rope_coil(dock, 8.71 + dx_off, -1.89 + dy_off, .016, .105, WICKER[2])
+    tube(dock, [(8.955 + dx_off, -1.683 + dy_off, .213), (9.072 + dx_off, -1.618 + dy_off, .129),
+                (9.169 + dx_off, -1.514 + dy_off, -.052), (9.292 + dx_off, -1.394 + dy_off, -.041)],
          [.009] * 4, WICKER[2], sides=6)
 
-    angle = -.23
-    bx, by = 9.91, -1.28
+    angle = -.24
+    bx, by = 16.25, -1.65
     sin_angle, cos_angle = sin(angle), cos(angle)
 
     def to_skiff(x, y, z):
@@ -809,9 +869,59 @@ def landing():
     skiff.finish()
 
 
+def pavilion():
+    """Octagonal Jiangnan riverside pavilion (望江亭) on the southern terrace."""
+    base = Mesh("Pavilion octagonal plinth, pillars and stone table", DETAIL)
+    roof = Mesh("Pavilion swept octagonal roof and finial", DETAIL)
+    cx, cy = 6.50, -9.50
+    sides = 8
+    # Two-tier octagonal stone plinth
+    for tier, (rad, z0, z1) in enumerate(((1.12, -.02, .12), (.98, .12, .22))):
+        lower = [(cx + cos(2 * pi * i / sides + pi / 8) * rad,
+                  cy + sin(2 * pi * i / sides + pi / 8) * rad, z0) for i in range(sides)]
+        upper = [(x, y, z1) for x, y, _ in lower]
+        for i in range(sides):
+            ni = (i + 1) % sides
+            base.add([lower[i], lower[ni], upper[ni], upper[i]], [(0, 1, 2, 3)], STONE[1 + tier])
+        base.polygon(upper, STONE[2 + tier])
+    # 8 vermilion lacquered pillars + wooden balustrade benches (leaving north/south entries open)
+    prad = .82
+    pillar_pts = [(cx + cos(2 * pi * i / sides + pi / 8) * prad,
+                   cy + sin(2 * pi * i / sides + pi / 8) * prad) for i in range(sides)]
+    for px, py in pillar_pts:
+        tube(base, [(px, py, .22), (px, py, 1.38)], [.055, .048], VERMILION, sides=10)
+        lathe(base, px, py, .22, [(.082, 0), (.078, .05), (.062, .09)], STONE[2], sides=10)
+    for i in range(sides):
+        ni = (i + 1) % sides
+        a, b = pillar_pts[i], pillar_pts[ni]
+        tube(base, [(a[0], a[1], 1.34), (b[0], b[1], 1.34)], [.042, .042], WOOD[1], sides=6)
+        if i in (1, 5):
+            continue  # Open north & south entryways
+        tube(base, [(a[0], a[1], .54), (b[0], b[1], .54)], [.036, .036], VERMILION, sides=6)
+        tube(base, [(a[0], a[1], .40), (b[0], b[1], .40)], [.045, .045], WOOD[3], sides=6)
+    # Stone tea table & central hanging warm lantern
+    lathe(base, cx, cy, .22, [(.14, 0), (.11, .28), (.30, .34), (.31, .40), (.0, .41)], STONE[3], sides=14)
+    lantern(base, cx, cy, 1.32, 1.05)
+    # Sweeping flared octagonal tile roof + golden finial (宝顶)
+    rings = []
+    for rad, z in ((1.38, 1.24), (1.06, 1.48), (.68, 1.78), (.32, 2.08), (.07, 2.28)):
+        rings.append([(cx + cos(2 * pi * i / sides + pi / 8) * rad,
+                       cy + sin(2 * pi * i / sides + pi / 8) * rad,
+                       z + (.08 if rad > 1.2 else 0)) for i in range(sides)])
+    for r_idx, (low, high) in enumerate(zip(rings, rings[1:])):
+        for i in range(sides):
+            ni = (i + 1) % sides
+            roof.add([low[i], low[ni], high[ni], high[i]], [(0, 1, 2, 3)], SLATE[(r_idx + i) % len(SLATE)])
+            tube(roof, [low[i], high[i]], [.024, .016], SLATE[0], sides=5)
+    roof.polygon(rings[-1], SLATE[0])
+    lathe(roof, cx, cy, 2.26, [(.07, 0), (.11, .06), (.05, .14), (.08, .20), (.01, .34)], GOLD, sides=12)
+    base.finish()
+    roof.finish()
+
+
 def medicine_chest():
     mesh = Mesh("Empty medicine chest with open hinged lid", DETAIL)
-    x, y = 8.5, -4.5
+    x, y = 13.5, -7.5
     w, d, h = .36, .256, .142
     x0, x1, y0, y1 = x - w / 2, x + w / 2, y - d / 2, y + d / 2
     block(mesh, (x, y, .026), (w, d, .054), WOOD[1], .009)
@@ -963,12 +1073,12 @@ def landscape():
     stones = Mesh("Weathered shoreline stones and mossy outcrops", VEGETATION)
     greens = Mesh("Jointed bamboo, meadow blades and foxtail reeds", VEGETATION)
     flowers = Mesh("Wild orchids, tiny white blooms and lily pads", VEGETATION)
-    accents = [(0.43, -4.74, .38, .28, .25), (5.56, -5.68, .38, .37, .27),
-               (5.51, -5.19, .28, .21, .20), (.63, -6.92, .35, .24, .27),
-               (2.86, -7.52, .31, .19, .17), (3.32, -7.21, .26, .22, .19),
-               (11.62, -6.43, .33, .38, .24), (11.69, -4.86, .32, .27, .19),
-               (7.16, -2.29, .28, .20, .19), (4.45, -.46, .35, .20, .22),
-               (5.87, -.65, .38, .31, .23), (10.91, -7.37, .35, .25, .19)]
+    accents = [
+        (0.55, -5.20, .42, .32, .28), (5.55, -5.50, .46, .40, .34), (6.45, -5.55, .38, .32, .26),
+        (1.10, -8.80, .38, .28, .28), (3.40, -10.80, .36, .24, .22), (10.50, -11.10, .40, .28, .24),
+        (17.10, -8.80, .36, .38, .26), (17.20, -5.10, .34, .28, .22), (11.20, -1.80, .36, .26, .24),
+        (5.20, -1.50, .36, .26, .24), (13.20, -10.30, .38, .28, .22),
+    ]
     for x, y, rx, ry, h in accents:
         rock(stones, x, y, -.024, rx, ry, h)
         for _ in range(7):
@@ -978,55 +1088,61 @@ def landscape():
             rock(stones, x + dx, y + dy, -.03, radius, radius * .8, radius * .76)
         for n in range(4):
             a = n * pi / 2 + RNG.uniform(0, .5)
-            grasses(greens, x + cos(a) * rx * 1.20, y + sin(a) * ry * 1.14, .16, 9)
-    for x, y, h in ((.33, -3.85, .93), (.26, -5.26, 1.0), (5.45, -5.54, 1.08),
-                    (5.62, -5.93, .74), (6.64, -.53, .94), (2.81, -7.67, .62),
-                    (7.26, -7.62, .84), (11.75, -5.76, .74), (.42, -1.99, .70)):
+            grasses(greens, x + cos(a) * rx * 1.20, y + sin(a) * ry * 1.14, .18, 9)
+    for x, y, h in (
+        (.45, -3.90, 1.05), (.42, -6.20, 1.12), (5.40, -5.45, 1.25), (6.55, -5.55, .95),
+        (5.15, -1.35, 1.02), (11.15, -1.55, 1.08), (2.40, -10.20, .82), (9.80, -11.30, .92),
+        (17.35, -6.20, .88), (.55, -1.95, .80),
+    ):
         bamboo(greens, x, y, h)
-    for x, y, z, size in ((11.20, -5.29, -.02, .69), (11.62, -5.52, -.022, .80),
-                           (11.28, -6.45, -.021, .67), (10.73, -6.89, -.02, .32),
-                           (10.31, -7.23, -.022, .56), (9.85, -7.48, -.028, .39),
-                           (11.91, -5.37, -.123, .52), (11.98, -5.88, -.102, .61),
-                           (11.93, -5.13, -.096, .53), (11.83, -4.97, -.149, .53),
-                           (11.31, -3.39, -.024, .46), (11.42, -3.22, -.114, .54),
-                           (11.14, -3.11, -.094, .51), (10.84, -3.05, -.108, .27),
-                           (7.37, -2.71, -.104, .38), (8.05, -2.87, -.080, .32),
-                           (6.16, -7.80, -.038, .31), (.161, -5.79, -.155, .42),
-                           (.51, -7.4, -.121, .36), (3.85, -7.88, -.119, .31)):
-        grasses(greens, x, y, size * .66, 17, z=z)
+    for x, y, z, size in (
+        (16.95, -5.40, -.02, .72), (17.30, -6.40, -.022, .84), (17.10, -7.80, -.021, .76),
+        (16.65, -9.20, -.02, .62), (15.70, -10.10, -.022, .58), (14.40, -10.35, -.028, .50),
+        (17.60, -6.90, -.12, .62), (17.55, -8.30, -.11, .64), (16.40, -3.55, -.024, .54),
+        (15.60, -3.40, -.10, .48), (13.65, -2.90, -.10, .42), (13.20, -6.60, -.02, .48),
+        (13.30, -8.70, -.02, .52), (12.10, -10.90, -.04, .42), (.45, -8.30, -.12, .44),
+        (4.80, -11.45, -.10, .38),
+    ):
+        grasses(greens, x, y, size * .68, 17, z=z)
         for i in range(8):
-            cattail(greens, x + RNG.uniform(-.17, .17), y + RNG.uniform(-.16, .16),
-                    z, size * RNG.uniform(.53, 1.01))
-    for _ in range(235):
-        x, y = RNG.uniform(.28, 11.75), RNG.uniform(-7.74, -.23)
-        if (x > 7 and y > -3.25) or (x > 10.6 and y < -7.07):
+            cattail(greens, x + RNG.uniform(-.22, .22), y + RNG.uniform(-.20, .20),
+                    z, size * RNG.uniform(.55, 1.05))
+    for _ in range(340):
+        x, y = RNG.uniform(.40, 17.50), RNG.uniform(-11.40, -.40)
+        if (x > 13.6 and y > -3.3) or (x > 15.8 and y < -9.8):
             continue
-        if (1.00 < x < 10.99 and -4.86 < y < -2.11) or (2.12 < x < 6 and y > -2.3):
+        if (1.0 < x < 16.9 and -4.95 < y < -3.00) or (4.1 < x < 11.5 and -8.1 < y < -6.95):
             continue
-        if (2.15 < x < 3.22 or 7.25 < x < 8.46) and -7 < y < -4.7:
+        if (2.7 < x < 4.4 or 7.9 < x < 9.6) and -11.0 < y < -4.8:
             continue
-        height = RNG.uniform(.038, .138)
+        if 5.2 < x < 7.8 and -10.8 < y < -8.2:
+            continue
+        height = RNG.uniform(.042, .148)
         grasses(greens, x, y, height, RNG.randint(4, 8))
-        if RNG.random() < .26:
+        if RNG.random() < .28:
             for i in range(3):
-                xx = x + RNG.uniform(-.046, .046)
-                yy = y + RNG.uniform(-.047, .047)
+                xx = x + RNG.uniform(-.05, .05)
+                yy = y + RNG.uniform(-.05, .05)
                 head = height * RNG.uniform(.71, 1.24)
-                tube(flowers, [(x, y, -.025), (xx, yy, head)], [.0029, .0023], REED[2], sides=4)
-                lathe(flowers, xx, yy, head, [(.004, 0), (.013, .006), (.007, .011)],
+                tube(flowers, [(x, y, -.025), (xx, yy, head)], [.0030, .0024], REED[2], sides=4)
+                lathe(flowers, xx, yy, head, [(.004, 0), (.014, .006), (.007, .011)],
                       LIME[1] if i < 2 else GOLD, 5, ratio=.79)
-    for x, y in ((9.96, -2.44), (10.25, -2.56), (10.42, -2.44), (7.53, -1.11),
-                 (7.66, -1.39), (10.77, -2.67), (.44, -7.66), (.32, -7.56)):
-        rx = RNG.uniform(.064, .135)
+    for x, y in (
+        (15.8, -2.8), (16.4, -2.9), (16.9, -2.7), (14.2, -1.2), (14.4, -1.5),
+        (17.2, -3.1), (1.0, -10.4), (.8, -10.1), (4.2, -11.9), (8.2, -12.0),
+    ):
+        rx = RNG.uniform(.07, .15)
         pad = [(x + cos(2 * pi * n / 12) * rx, y + sin(2 * pi * n / 12) * rx * .79, -.233)
                for n in range(1, 12)]
         pad.append((x, y, -.231))
         flowers.polygon(pad, RNG.choice(LEAVES[1:4]))
-        if RNG.random() < .40:
-            lathe(flowers, x - .032, y, -.233, [(.014, 0), (.027, .018), (.024, .041),
-                                                (.009, .045)], LIME[1], 6)
-    willow(.62, -6.52, 1.77, (-.090, -.069), "West bank")
-    willow(11.62, -6.92, 1.58, (.122, -.147), "Reed bank")
+        if RNG.random() < .45:
+            lathe(flowers, x - .032, y, -.233, [(.014, 0), (.028, .018), (.025, .042),
+                                                (.009, .046)], LIME[1], 6)
+    willow(.78, -8.85, 1.92, (-.095, -.072), "West bank")
+    willow(4.65, -10.85, 1.75, (-.080, -.095), "South west")
+    willow(10.65, -10.95, 1.78, (.090, -.095), "South east")
+    willow(16.95, -9.55, 1.68, (.125, -.145), "Reed bank")
     stones.finish()
     greens.finish()
     flowers.finish()
@@ -1036,12 +1152,12 @@ def preview_rig():
     def aim(obj, point):
         obj.rotation_euler = (Vector(point) - obj.location).to_track_quat("-Z", "Y").to_euler()
 
-    subject = (5.72, -4.02, .57)
+    subject = (9.0, -6.0, .65)
     camera = bpy.data.objects.new("Orthographic play camera", bpy.data.cameras.new("Ferry orthographic"))
     STUDIO.objects.link(camera)
-    camera.location = Vector(subject) + Vector((.63, -1, .738)) * 12
+    camera.location = Vector(subject) + Vector((.63, -1, .738)) * 16
     camera.data.type = "ORTHO"
-    camera.data.ortho_scale = 16.20
+    camera.data.ortho_scale = 23.50
     aim(camera, subject)
     SCENE.camera = camera
 
@@ -1096,9 +1212,11 @@ def main():
     bank()
     stone_path()
     flats()
+    apothecary_shop()
     inn()
     boathouse()
     landing()
+    pavilion()
     medicine_chest()
     landscape()
     preview_rig()

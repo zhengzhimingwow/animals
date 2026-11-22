@@ -37,8 +37,10 @@ var url_field: LineEdit
 var token_field: LineEdit
 var connection_message: Label
 var link_button: Button
+var location_title: Label
 var world_status: Label
 var bag_status: Label
+var quest_hints: Dictionary = QUESTS.duplicate()
 var dialogue_title: Label
 var dialogue_body: Label
 var _movement := GridInput.new()
@@ -124,7 +126,8 @@ func _build_world() -> void:
     var location_stack := VBoxContainer.new()
     location_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
     location.add_child(location_stack)
-    _text(location_stack, "溪桥渡", 25, GOLD).autowrap_mode = TextServer.AUTOWRAP_OFF
+    location_title = _text(location_stack, "溪桥渡", 25, GOLD)
+    location_title.autowrap_mode = TextServer.AUTOWRAP_OFF
     world_status = _text(location_stack, "等待进入江湖", 14, MUTE)
     world_status.autowrap_mode = TextServer.AUTOWRAP_OFF
     bag_status = _text(location_stack, "蛇胆 0 · 铜钱 0", 14, PAPER)
@@ -293,10 +296,15 @@ func _apply(message: Dictionary) -> void:
             view.my_id = my_id
             view.tiles = map_info["tiles"]
             view.features = map_info["features"]
+            view.plaques = map_info.get("plaques", [])
+            if map_info.has("name") and location_title:
+                location_title.text = String(map_info["name"])
+            if map_info.has("quest_hints") and map_info["quest_hints"] is Dictionary:
+                quest_hints = map_info["quest_hints"]
             view.set_world({})
             login.hide()
             link_button.disabled = false
-            _show_dialogue("", QUESTS.get(message["player"]["quest"], ""))
+            _show_dialogue("", String(quest_hints.get(message["player"]["quest"], "")))
             _update_bag(message["player"])
         "world":
             var own: Dictionary = message["players"].get(my_id, {})
@@ -306,6 +314,25 @@ func _apply(message: Dictionary) -> void:
                     view.correct_step(cell)
             view.set_world(message, _movement.pending)
             world_status.text = "%d 人在线" % view.players.size()
+        "map_updated":
+            var map_info: Dictionary = message.get("map", {})
+            if not map_info.is_empty():
+                view.tiles = map_info.get("tiles", view.tiles)
+                view.features = map_info.get("features", view.features)
+                view.plaques = map_info.get("plaques", view.plaques)
+                if map_info.has("name") and location_title:
+                    location_title.text = String(map_info["name"])
+                if map_info.has("quest_hints") and map_info["quest_hints"] is Dictionary:
+                    quest_hints = map_info["quest_hints"]
+            var world_snap: Dictionary = message.get("world", {})
+            if not world_snap.is_empty():
+                var own: Dictionary = world_snap.get("players", {}).get(my_id, {})
+                if not own.is_empty():
+                    var cell := Vector2i(int(own["x"]), int(own["y"]))
+                    if _movement.observe(cell):
+                        view.correct_step(cell)
+                view.set_world(world_snap, _movement.pending)
+                world_status.text = "%d 人在线" % view.players.size()
         "moved":
             if message.has("x") and message.has("y"):
                 var cell := Vector2i(int(message["x"]), int(message["y"]))
@@ -367,12 +394,22 @@ func _blocked_tiles() -> Dictionary:
         blocked[Vector2i(int(item["x"]), int(item["y"]))] = true
     return blocked
 
+func _is_monster(id: String) -> bool:
+    if view.features.has(id) and view.features[id].has("kind"):
+        return String(view.features[id]["kind"]) == "monster"
+    return id == "reed_snake"
+
+func _monster_alive(id: String) -> bool:
+    if view.monsters.has(id):
+        return bool(view.monsters[id].get("alive", false))
+    return bool(view.monster.get("alive", false))
+
 func _pump_movement(now: int) -> void:
     if _movement.at_goal():
         var target := _approach_target
         _clear_input()
-        if target != "" and (target != "reed_snake" or view.monster.get("alive", false)):
-            _send({"type": "attack" if target == "reed_snake" else "interact", "target": target})
+        if target != "" and (not _is_monster(target) or _monster_alive(target)):
+            _send({"type": "attack" if _is_monster(target) else "interact", "target": target})
         return
     var step := _movement.next_step(view.tiles, now, _blocked_tiles())
     if step == GridInput.OUTSIDE:
@@ -399,7 +436,7 @@ func _on_tile(tile: Vector2i) -> void:
     for id in view.features:
         var item: Dictionary = view.features[id]
         if tile == Vector2i(int(item["x"]), int(item["y"])):
-            if id == "reed_snake" and not view.monster.get("alive", false):
+            if _is_monster(id) and not _monster_alive(id):
                 break
             target = id
             break
@@ -428,14 +465,28 @@ func _unhandled_key_input(event: InputEvent) -> void:
     if not event.pressed or event.echo:
         return
     if event.physical_keycode == KEY_SPACE:
-        _send({"type": "attack", "target": "reed_snake"})
+        var position := _my_tile()
+        var best := ""
+        var best_distance := 2
+        for id in view.features:
+            if not _is_monster(id):
+                continue
+            var item: Dictionary = view.features[id]
+            var distance: int = absi(position.x - int(item["x"])) + absi(position.y - int(item["y"]))
+            if distance < best_distance:
+                best_distance = distance
+                best = id
+        if best == "":
+            _show_dialogue("", "附近没有可以攻击的目标。")
+        else:
+            _send({"type": "attack", "target": best})
         get_viewport().set_input_as_handled()
     if event.physical_keycode == KEY_E:
         var position := _my_tile()
         var best := ""
         var best_distance := 2
         for id in view.features:
-            if id == "reed_snake":
+            if _is_monster(id):
                 continue
             var item: Dictionary = view.features[id]
             var distance: int = absi(position.x - int(item["x"])) + absi(position.y - int(item["y"]))

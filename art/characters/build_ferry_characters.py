@@ -201,6 +201,13 @@ def eye(figure, side, x, y, z, scale, iris, liner, white, pupil, gleam, bone=Non
                (.012 * scale, .004 * scale, .015 * scale), gleam, bone, sides=12, rows=8)
     figure.egg("Small eye catchlight", (x + .011 * scale, y - .044 * scale, z - .019 * scale),
                (.005 * scale, .003 * scale, .007 * scale), gleam, bone, sides=10, rows=7)
+    # Sculpted upper lash line for warmer, livelier gaze
+    figure.sweep("Upper lash", [
+        (x - side * .052 * scale, y - .016 * scale, z + .034 * scale, .007 * scale),
+        (x - side * .006 * scale, y - .028 * scale, z + .070 * scale, .011 * scale),
+        (x + side * .048 * scale, y - .014 * scale, z + .052 * scale, .010 * scale),
+        (x + side * .068 * scale, y - .002 * scale, z + .062 * scale, .004 * scale),
+    ], liner, bone, sides=8, steps=4)
 
 
 def little_smile(figure, y, z, span, ink, bone=None):
@@ -436,124 +443,128 @@ def sword(figure, p):
 def make_rabbit(p):
     f = Figure("Rabbit herbalist")
     center, axes = (0, -.009, .770), (.241, .189, .213)
-    f.egg("Silvery head", center, axes, p["rabbit"], sides=36, rows=24)
-    f.egg("Cream chin", (0, -.119, .665), (.170, .080, .076), p["fur"])
+    f.egg("Silvery head", center, axes, p["rabbit"], "head", sides=36, rows=24)
+    f.egg("Cream chin", (0, -.119, .665), (.170, .080, .076), p["fur"], "head")
     for i, (x, y, z) in enumerate(((-.049, -.070, .963), (.011, -.100, .972), (.055, -.065, .949))):
         f.sweep("Soft tuft", [(x + .037, y + .010, z - .020, .027),
                              (x + .008, y - .008, z + .018, .032),
                              (x - .017, y + .004, z + .036 - i * .004, .007)],
-                p["rabbit_light"], sides=12)
-    for side in (-1, 1):
-        ear_angle = side * (.29 if side == 1 else .24)
-        f.egg("Long ear", (side * .126, .002, 1.071), (.078, .060, .217), p["rabbit"],
+                p["rabbit_light"], "head", sides=12)
+    for side, suffix in ((-1, "L"), (1, "R")):
+        ear_bone = f"ear.{suffix}"
+        ear_angle = side * (.32 if side == 1 else .20)
+        f.egg("Long ear", (side * .126, .002, 1.071), (.078, .060, .217), p["rabbit"], ear_bone,
               tilt=(-.12, ear_angle, 0), sides=24, rows=16)
-        f.egg("Cream ear edge", (side * .128, -.046, 1.074), (.058, .021, .177), p["rabbit_light"],
+        f.egg("Cream ear edge", (side * .128, -.046, 1.074), (.058, .021, .177), p["rabbit_light"], ear_bone,
               tilt=(-.12, ear_angle, 0), sides=24, rows=16)
-        f.egg("Blush inner ear", (side * .132, -.061, 1.089), (.043, .012, .153), p["rose"],
+        f.egg("Blush inner ear", (side * .132, -.061, 1.089), (.043, .012, .153), p["rose"], ear_bone,
               tilt=(-.12, ear_angle, 0), sides=24, rows=16)
-        f.egg("Face mask", (side * .113, -.146, .737), (.118, .058, .092), p["fur"],
+        f.egg("Face mask", (side * .113, -.146, .737), (.118, .058, .092), p["fur"], "head",
               tilt=(0, side * .36, side * .18))
         for index in range(2):
             f.sweep("Side ruff", [(side * .154, -.102, .696 + index * .027, .035),
                                  (side * .204, -.099, .718 + index * .027, .030),
                                  (side * .234, -.085, .743 + index * .027, .006)],
-                    p["fur"], aspect=.67, up=(0, 1, 0))
-        f.egg("Peach blush", (side * .162, -.190, .709), (.052, .018, .023), p["blush"],
+                    p["fur"], "head", aspect=.67, up=(0, 1, 0))
+        f.egg("Peach blush", (side * .162, -.190, .709), (.052, .018, .023), p["blush"], "head",
               tilt=(0, side * .18, side * .33), sides=20)
         eye(f, side, side * .092, -.188, .770, .92, p["rabbit_iris"], p["ink"], p["eye_white"],
-            p["pupil"], p["gleam"], tilted=-.16)
+            p["pupil"], p["gleam"], "head", tilted=-.16)
         ink_line(f, "Eyebrow", [(side * .068, .855, .004), (side * .094, .878, .010),
                                 (side * .124, .877, .010), (side * .151, .854, .003)],
-                 center, axes, p["rabbit_dark"], depth=.009)
-        f.egg("Bunny muzzle", (side * .032, -.177, .678), (.056, .039, .036), p["fur"])
-    f.egg("Pink nose", (0, -.215, .697), (.024, .013, .017), p["nose_light"])
-    little_smile(f, -.215, .673, .040, p["ink"])
-    costume(f, p["sage"], p["sage_dark"], p["linen"], p["sage_dark"], scale=.88)
-    for side in (-1, 1):
+                 center, axes, p["rabbit_dark"], "head", depth=.009)
+        f.egg("Bunny muzzle", (side * .032, -.177, .678), (.056, .039, .036), p["fur"], "head")
+    f.sweep("Hairpin", [(.090, -.045, .935, .006), (.165, -.025, .965, .005), (.215, -.010, .982, .002)],
+            p["wood"], "head", sides=8)
+    f.egg("Hairpin jade bead", (.192, -.018, .974), (.017, .017, .017), p["jade_light"], "head", sides=14, rows=10)
+    f.egg("Pink nose", (0, -.215, .697), (.024, .013, .017), p["nose_light"], "head")
+    little_smile(f, -.215, .673, .044, p["ink"], "head")
+    costume(f, p["sage"], p["sage_dark"], p["linen"], p["sage_dark"], "chest", scale=.88)
+    for side, suffix in ((-1, "L"), (1, "R")):
+        arm_bone = f"arm.{suffix}"
         f.sweep("Sage sleeve and rolled trim", [
             (side * .104, .012, .513, .085), (side * .178, -.018, .461, .092),
             (side * .199, -.062, .391, .071), (side * .169, -.103, .366, .063),
             (side * .135, -.129, .363, .046),
-        ], p["sage"], aspect=.93, bands=((.65, 1, p["linen"]),))
-        f.egg("Pouch grasp", (side * .114, -.151, .364), (.045, .042, .038), p["fur"])
-        f.egg("Trouser leg", (side * .091, .018, .139), (.080, .083, .090), p["sage_dark"])
-        f.egg("Bunny foot", (side * .091, -.043, .042), (.073, .093, .042), p["rabbit_light"])
+        ], p["sage"], arm_bone, aspect=.93, bands=((.65, 1, p["linen"]),))
+        f.egg("Pouch grasp", (side * .114, -.151, .364), (.045, .042, .038), p["fur"], arm_bone)
+        f.egg("Trouser leg", (side * .091, .018, .139), (.080, .083, .090), p["sage_dark"], "root")
+        f.egg("Bunny foot", (side * .091, -.043, .042), (.073, .093, .042), p["rabbit_light"], "root")
         for finger in (-1, 0, 1):
             f.egg("Toes", (side * .091 + finger * .025, -.118, .038), (.021, .029, .026),
-                  p["fur"], sides=14, rows=9)
-    f.egg("Rabbit tail", (-.135, .121, .252), (.081, .063, .068), p["rabbit_light"], sides=22)
+                  p["fur"], "root", sides=14, rows=9)
+    f.egg("Rabbit tail", (-.135, .121, .252), (.081, .063, .068), p["rabbit_light"], "hips", sides=22)
 
-    f.egg("Herb pouch", (0, -.158, .308), (.100, .064, .097), p["pouch"], sides=24, rows=16)
-    f.egg("Pouch gather", (0, -.158, .397), (.066, .047, .039), p["pouch"], sides=22)
+    f.egg("Herb pouch", (0, -.158, .308), (.100, .064, .097), p["pouch"], "chest", sides=24, rows=16)
+    f.egg("Pouch gather", (0, -.158, .397), (.066, .047, .039), p["pouch"], "chest", sides=22)
     for angle in range(7):
         phi = TAU * angle / 7
         f.egg("Gathered linen fold", (.051 * math.cos(phi), -.158 + .036 * math.sin(phi), .425),
-              (.022, .017, .021), p["linen"], tilt=(.28 * math.sin(phi), -.39 * math.cos(phi), 0),
+              (.022, .017, .021), p["linen"], "chest", tilt=(.28 * math.sin(phi), -.39 * math.cos(phi), 0),
               sides=12, rows=8)
-    f.egg("Pouch opening", (0, -.158, .432), (.043, .028, .009), p["leather"])
-    frog_buttons(f, -.208, .397, p["sage_dark"], size=.67)
+    f.egg("Pouch opening", (0, -.158, .432), (.043, .028, .009), p["leather"], "chest")
+    frog_buttons(f, -.208, .397, p["sage_dark"], "chest", size=.67)
     for x, z, size in ((.041, .276, .034), (.053, .288, .027), (.026, .283, .029)):
         f.sweep("Embroidered herb", [(x, -.217, z, .003), (x + size * .26, -.214, z + size * .50, .007),
-                                    (x + size * .44, -.210, z + size, .002)], p["sage_dark"],
+                                    (x + size * .44, -.210, z + size, .002)], p["sage_dark"], "chest",
                 sides=7, steps=4, aspect=.44, up=(0, 1, 0))
-    # Woven bamboo herb basket on back + medicinal herbs + waist gourd
     f.loft("Herb basket", [
         (.315, .096, .076, .185), (.370, .112, .088, .192), (.475, .128, .098, .198),
         (.565, .138, .104, .202), (.595, .132, .098, .200),
-    ], p["straw"], sides=20, drape=.035)
+    ], p["straw"], "chest", sides=20, drape=.035)
     f.loft("Basket rim", [
         (.575, .142, .108, .202), (.595, .146, .112, .202), (.612, .140, .106, .202),
-    ], p["ochre"], sides=20)
+    ], p["ochre"], "chest", sides=20)
     for idx, (ox, oy, h) in enumerate(((-.055, .188, .72), (.008, .205, .75), (.062, .195, .70), (-.020, .232, .69))):
         f.sweep("Fresh herb sprig", [
             (ox, oy, .575, .010), (ox * 1.15, oy + .018, .645, .022), (ox * 1.25, oy + .030, h, .004),
-        ], p["jade_light"] if idx % 2 == 0 else p["sage_dark"], sides=8, steps=4, aspect=.38, up=(0, 1, 0))
-    f.egg("Medicine gourd bottom", (.176, -.058, .302), (.048, .048, .054), p["brass"], sides=18, rows=12)
-    f.egg("Medicine gourd top", (.176, -.058, .372), (.033, .033, .036), p["brass"], sides=16, rows=10)
-    f.egg("Gourd stopper", (.176, -.058, .412), (.014, .014, .015), p["scarf"], sides=12, rows=8)
+        ], p["jade_light"] if idx % 2 == 0 else p["sage_dark"], "chest", sides=8, steps=4, aspect=.38, up=(0, 1, 0))
+    f.egg("Medicine gourd bottom", (.176, -.058, .302), (.048, .048, .054), p["brass"], "chest", sides=18, rows=12)
+    f.egg("Medicine gourd top", (.176, -.058, .372), (.033, .033, .036), p["brass"], "chest", sides=16, rows=10)
+    f.egg("Gourd stopper", (.176, -.058, .412), (.014, .014, .015), p["scarf"], "chest", sides=12, rows=8)
     return f
 
 
-def straw_leaf(figure, base, tip, width, ink):
+def straw_leaf(figure, base, tip, width, ink, bone=None):
     a, b = Vector(base), Vector(tip)
     profile = [
         (*a, width * .55), (*a.lerp(b, .27), width), (*a.lerp(b, .60), width * .74),
         (*a.lerp(b, .82), width * .40), (*b, .0015),
     ]
-    figure.sweep("Lacquered straw blade", profile, ink, sides=8, steps=3,
+    figure.sweep("Lacquered straw blade", profile, ink, bone, sides=8, steps=3,
                  aspect=.30, up=(0, 0, 1))
 
 
 def make_ox(p):
     f = Figure("Ox ferryman")
     center, axes = (0, .003, .818), (.278, .208, .207)
-    f.egg("Chestnut head", center, axes, p["ox"], sides=36, rows=24)
-    f.egg("Muzzle mass", (0, -.163, .711), (.156, .092, .096), p["ox_dark"])
-    f.egg("Velvet muzzle", (0, -.198, .716), (.142, .081, .070), p["ox_muzzle"], sides=28)
-    f.egg("Muzzle top", (0, -.237, .739), (.122, .046, .051), p["ox_muzzle"], sides=28)
+    f.egg("Chestnut head", center, axes, p["ox"], "head", sides=36, rows=24)
+    f.egg("Muzzle mass", (0, -.163, .711), (.156, .092, .096), p["ox_dark"], "head")
+    f.egg("Velvet muzzle", (0, -.198, .716), (.142, .081, .070), p["ox_muzzle"], "head", sides=28)
+    f.egg("Muzzle top", (0, -.237, .739), (.122, .046, .051), p["ox_muzzle"], "head", sides=28)
     for side in (-1, 1):
-        f.egg("Nostril rim", (side * .075, -.271, .755), (.028, .013, .020), p["ox_rose"],
+        f.egg("Nostril rim", (side * .075, -.271, .755), (.028, .013, .020), p["ox_rose"], "head",
               tilt=(0, -side * .56, side * .32))
-        f.egg("Nostril", (side * .077, -.281, .757), (.019, .007, .013), p["stripe"],
+        f.egg("Nostril", (side * .077, -.281, .757), (.019, .007, .013), p["stripe"], "head",
               tilt=(0, -side * .56, side * .32), sides=14, rows=9)
-        f.egg("Broad ear", (side * .299, .009, .867), (.129, .067, .061), p["ox_dark"],
+        f.egg("Broad ear", (side * .299, .009, .867), (.129, .067, .061), p["ox_dark"], "head",
               tilt=(.17, -side * .27, side * .08))
-        f.egg("Ear bronze", (side * .308, -.025, .867), (.113, .047, .050), p["ox"],
+        f.egg("Ear bronze", (side * .308, -.025, .867), (.113, .047, .050), p["ox"], "head",
               tilt=(.17, -side * .27, side * .08))
-        f.egg("Ear blush", (side * .326, -.059, .862), (.077, .019, .032), p["ox_rose"],
+        f.egg("Ear blush", (side * .326, -.059, .862), (.077, .019, .032), p["ox_rose"], "head",
               tilt=(.17, -side * .29, side * .09))
         horn = [
             (side * .148, .011, .968, .076), (side * .235, .020, 1.001, .074),
             (side * .303, .024, 1.032, .061), (side * .334, .020, 1.106, .043),
             (side * .322, .005, 1.186, .021), (side * .292, -.021, 1.225, .003),
         ]
-        f.sweep("Ivory horn", horn, p["horn"], sides=20, steps=8, aspect=.82,
+        f.sweep("Ivory horn", horn, p["horn"], "head", sides=20, steps=8, aspect=.82,
                 bands=((0, .14, p["horn_base"]),))
         eye(f, side, side * .113, -.186, .831, .89, p["amber_dark"], p["ink"],
-            p["eye_white"], p["pupil"], p["gleam"], tilted=-.35)
+            p["eye_white"], p["pupil"], p["gleam"], "head", tilted=-.35)
         ink_line(f, "Heavy brow", [(side * .056, .887, .004), (side * .094, .915, .015),
                                     (side * .126, .921, .020), (side * .172, .901, .004)],
-                 center, axes, p["ox_dark"], depth=.016)
+                 center, axes, p["ox_dark"], "head", depth=.016)
         for index in range(4):
             x = side * (.022 + index * .037)
             f.sweep("Shaggy forelock", [
@@ -561,37 +572,37 @@ def make_ox(p):
                 (x, -.135, .999 + .008 * index, .047 - .004 * index),
                 (x + side * .014, -.183, .952 + .011 * index, .021),
                 (x + side * .011, -.187, .920 + .016 * index, .004),
-            ], p["ox_hair"] if index % 2 else p["ox"], sides=12, aspect=.69, up=(0, 1, 0))
-    little_smile(f, -.270, .680, .074, p["ox_dark"])
-    # Brass nose ring
+            ], p["ox_hair"] if index % 2 else p["ox"], "head", sides=12, aspect=.69, up=(0, 1, 0))
+    little_smile(f, -.270, .680, .074, p["ox_dark"], "head")
     nose_ring = []
     for index in range(15):
         phi = math.radians(-155 + 310 * index / 14)
         nose_ring.append((.046 * math.sin(phi), -.286 - .006 * math.cos(phi), .698 - .042 * math.cos(phi), .0085))
-    f.sweep("Brass nose ring", nose_ring, p["brass"], sides=10, steps=2)
-    costume(f, p["mustard"], p["ochre"], p["linen"], p["indigo"], scale=1.07)
+    f.sweep("Brass nose ring", nose_ring, p["brass"], "head", sides=10, steps=2)
+    costume(f, p["mustard"], p["ochre"], p["linen"], p["indigo"], "chest", scale=1.07)
     f.loft("Straw cape collar", [
         (.530, .266, .136, .013), (.563, .286, .147, .018), (.622, .233, .138, .017),
         (.665, .160, .116, .012), (.699, .135, .096, .023),
-    ], p["ochre"], drape=.075)
-    frog_buttons(f, -.153, .596, p["linen"], size=1.04)
-    frog_buttons(f, -.161, .387, p["indigo"], size=1.14)
-    for side in (-1, 1):
+    ], p["ochre"], "chest", drape=.075)
+    frog_buttons(f, -.153, .596, p["linen"], "chest", size=1.04)
+    frog_buttons(f, -.161, .387, p["indigo"], "chest", size=1.14)
+    for side, suffix in ((-1, "L"), (1, "R")):
+        arm_bone = f"arm.{suffix}"
         f.sweep("Ferryman sleeve and cuff", [
             (side * .149, .021, .595, .119), (side * .246, .003, .508, .102),
             (side * .266, -.026, .459, .080), (side * .282, -.041, .425, .073),
             (side * .283, -.045, .405, .060),
-        ], p["mustard"], aspect=.90, bands=((.55, 1, p["linen"]),))
-        f.egg("Ferryman hand", (side * .281, -.049, .375), (.072, .063, .065), p["ox"])
+        ], p["mustard"], arm_bone, aspect=.90, bands=((.55, 1, p["linen"]),))
+        f.egg("Ferryman hand", (side * .281, -.049, .375), (.072, .063, .065), p["ox"], arm_bone)
         for finger in (-1, 0, 1):
             f.egg("Fingers", (side * .278 + .027 * finger, -.091, .356),
-                  (.023, .020, .025), p["ox_hair"], sides=14, rows=9)
-        f.egg("Ferryman trousers", (side * .113, .013, .164), (.109, .104, .100), p["trousers"])
-        f.egg("Padded ankle wrap", (side * .118, .008, .084), (.087, .081, .048), p["linen"])
-        f.egg("Cloven hoof", (side * .122, -.028, .043), (.085, .098, .043), p["ox_dark"])
+                  (.023, .020, .025), p["ox_hair"], arm_bone, sides=14, rows=9)
+        f.egg("Ferryman trousers", (side * .113, .013, .164), (.109, .104, .100), p["trousers"], "root")
+        f.egg("Padded ankle wrap", (side * .118, .008, .084), (.087, .081, .048), p["linen"], "root")
+        f.egg("Cloven hoof", (side * .122, -.028, .043), (.085, .098, .043), p["ox_dark"], "root")
         for toe in (-1, 1):
             f.egg("Hoof toe", (side * .122 + toe * .036, -.091, .041), (.035, .038, .036),
-                  p["hoof"], sides=16)
+                  p["hoof"], "root", sides=16)
         for layer in range(3):
             for index in range(10):
                 angle = -.98 + 2.17 * index / 9
@@ -603,7 +614,19 @@ def make_ox(p):
                     .503 + .049 * layer + .024 * abs(math.sin(angle)),
                 )
                 straw_leaf(f, base, tip, .036 - .004 * layer,
-                           (p["straw_light"], p["straw"], p["mustard"])[(index + 2 * layer) % 3])
+                           (p["straw_light"], p["straw"], p["mustard"])[(index + 2 * layer) % 3], "chest")
+    # Carved wooden boatman oar held in right hand (breaks symmetrical silhouette!)
+    f.sweep("Boatman oar shaft", [
+        (.315, -.115, .035, .019), (.305, -.092, .375, .021),
+        (.292, -.068, .820, .021), (.282, -.052, 1.120, .018),
+    ], p["wood"], "arm.R", sides=12, steps=4)
+    f.sweep("Boatman oar blade", [
+        (.282, -.052, 1.095, .024), (.278, -.048, 1.240, .062),
+        (.275, -.045, 1.385, .066), (.273, -.043, 1.445, .028),
+    ], p["ochre"], "arm.R", sides=14, steps=4, aspect=.24, up=(0, 1, 0))
+    f.sweep("Oar brass band", [
+        (.284, -.054, 1.070, .023), (.282, -.052, 1.105, .025),
+    ], p["brass"], "arm.R", sides=12, steps=2)
     # Conical woven bamboo hat (douli) slung across back
     hat_center = Vector((0.0, .235, .565))
     hat_rings = []
@@ -625,39 +648,41 @@ def make_ox(p):
             c = (r + 1) * 28 + n
             d = (r + 1) * 28 + s
             hat_faces.append((a, b, c, d))
-    f.mesh("Bamboo rain hat", hat_verts, hat_faces, p["straw_light"], None)
+    f.mesh("Bamboo rain hat", hat_verts, hat_faces, p["straw_light"], "chest")
     hat_rim = [(hat_center.x + .355 * math.cos(TAU * s / 28),
                 hat_center.y - .010,
                 hat_center.z + .355 * math.sin(TAU * s / 28), .013) for s in range(29)]
-    f.sweep("Hat bamboo rim", hat_rim, p["ochre"], sides=8, steps=2)
+    f.sweep("Hat bamboo rim", hat_rim, p["ochre"], "chest", sides=8, steps=2)
     return f
 
 
 def make_snake(p):
     f = Figure("Jade reed snake")
-    body = []
+    coil_body = []
     for i in range(25):
         pct = i / 24
         phi = -.59 - TAU * 1.11 * pct
         radial = .274 + .067 * math.sin(math.pi * pct) - .17 * pct ** 5
         z = .103 + .132 * math.exp(-9 * pct) + .067 * pct ** 5
         thickness = .006 + .094 * min(1, pct * 6)
-        body.append((radial * math.cos(phi), radial * math.sin(phi), z, thickness))
-    body.extend([
+        coil_body.append((radial * math.cos(phi), radial * math.sin(phi), z, thickness))
+    f.sweep("Coiled base", coil_body, p["jade"], "coil", sides=24, steps=5)
+    neck_body = [
+        coil_body[-1],
         (.074, .035, .204, .107), (.115, -.006, .279, .107), (.106, -.030, .365, .102),
         (.053, -.038, .451, .102), (-.008, -.059, .534, .104), (-.017, -.080, .603, .107),
-    ])
-    f.sweep("Complete coiled body", body, p["jade"], sides=24, steps=5)
+    ]
+    f.sweep("Raised neck", neck_body, p["jade"], "neck", sides=24, steps=5)
     for index in range(4, 22):
-        radial = Vector(body[index][:2]).normalized()
-        x, y, z, radius = body[index]
+        radial = Vector(coil_body[index][:2]).normalized()
+        x, y, z, radius = coil_body[index]
         phi = math.atan2(radial.y, radial.x)
         f.egg("Coil belly plate", (x + radial.x * .065, y + radial.y * .064, z - .045),
-              (.044, .029, .027), p["snake_belly"] if index % 3 else p["snake_belly_dark"],
+              (.044, .029, .027), p["snake_belly"] if index % 3 else p["snake_belly_dark"], "coil",
               tilt=(.30, 0, phi + math.pi / 2), sides=14, rows=8)
         if index % 2 == 0:
             f.egg("Jade scale accent", (x + radial.x * .042, y + radial.y * .042, z + .087),
-                  (.032, .020, .006), p["jade_light"], tilt=(.17, .18, phi),
+                  (.032, .020, .006), p["jade_light"], "coil", tilt=(.17, .18, phi),
                   sides=14, rows=8)
     for index in range(2, 12):
         t = index / 11
@@ -665,37 +690,37 @@ def make_snake(p):
         y = -.092 - .074 * t
         z = .187 + .390 * t
         f.egg("Neck belly plate", (x, y, z), (.077 + .014 * math.sin(math.pi * t), .032, .030),
-              p["snake_belly"] if index % 4 else p["snake_belly_dark"],
+              p["snake_belly"] if index % 4 else p["snake_belly_dark"], "neck",
               tilt=(.13, -.24 + .60 * t, 0), sides=22, rows=10)
 
     center, axes = (-.029, -.099, .643), (.193, .157, .155)
-    f.egg("Jade head", center, axes, p["jade"], sides=36, rows=22)
-    f.egg("Pale lower jaw", (-.038, -.157, .569), (.153, .117, .064), p["snake_belly"], sides=26)
-    f.egg("Short snout", (-.037, -.198, .610), (.126, .085, .054), p["jade"], sides=28, rows=14)
+    f.egg("Jade head", center, axes, p["jade"], "head", sides=36, rows=22)
+    f.egg("Pale lower jaw", (-.038, -.157, .569), (.153, .117, .064), p["snake_belly"], "head", sides=26)
+    f.egg("Short snout", (-.037, -.198, .610), (.126, .085, .054), p["jade"], "head", sides=28, rows=14)
     for side in (-1, 1):
         x = -.029 + side * .100
-        f.egg("Brow ridge", (x, -.204, .661), (.084, .047, .065), p["jade_dark"],
+        f.egg("Brow ridge", (x, -.204, .661), (.084, .047, .065), p["jade_dark"], "head",
               tilt=(0, side * .41, side * .33))
-        f.egg("Pale eye edge", (x, -.225, .648), (.061, .038, .044), p["snake_belly"],
+        f.egg("Pale eye edge", (x, -.225, .648), (.061, .038, .044), p["snake_belly"], "head",
               tilt=(0, -side * .37, side * .31))
-        f.egg("Amber eye", (x, -.252, .652), (.048, .025, .038), p["snake_eye"],
+        f.egg("Amber eye", (x, -.252, .652), (.048, .025, .038), p["snake_eye"], "head",
               tilt=(0, -side * .35, side * .27), sides=22)
-        f.egg("Vertical pupil", (x - side * .007, -.271, .652), (.012, .009, .030), p["pupil"],
+        f.egg("Vertical pupil", (x - side * .007, -.271, .652), (.012, .009, .030), p["pupil"], "head",
               tilt=(0, -side * .18, side * .22), sides=14, rows=10)
-        f.egg("Snake catchlight", (x - .006, -.277, .666), (.008, .004, .009), p["gleam"],
+        f.egg("Snake catchlight", (x - .006, -.277, .666), (.008, .004, .009), p["gleam"], "head",
               sides=12, rows=8)
-        f.egg("Nostril", (-.037 + side * .050, -.273, .615), (.013, .008, .006), p["jade_dark"],
+        f.egg("Nostril", (-.037 + side * .050, -.273, .615), (.013, .008, .006), p["jade_dark"], "head",
               tilt=(0, side * .28, side * .19), sides=12, rows=8)
         f.sweep("Snake smile", [
             (-.037, -.276, .585, .004), (-.037 + side * .076, -.259, .584, .005),
             (-.037 + side * .122, -.220, .590, .004), (-.037 + side * .148, -.182, .610, .002),
-        ], p["jade_dark"], sides=7, steps=5)
+        ], p["jade_dark"], "head", sides=7, steps=5)
         ink_line(f, "Pale temple marking", [
             (-.029 + side * .155, .715, .006),
             (-.029 + side * .109, .736, .011),
             (-.029 + side * .092, .756, .009),
             (-.029 + side * .058, .759, .005),
-        ], center, axes, p["snake_belly_dark"], depth=.010)
+        ], center, axes, p["snake_belly_dark"], "head", depth=.010)
     for row in range(3):
         for col in range(-row - 1, row + 2):
             x = -.030 + .042 * col
@@ -704,30 +729,27 @@ def make_snake(p):
                 continue
             y = face_y(center, axes, x, z, .003)
             f.egg("Forehead scale", (x, y, z), (.016, .004, .010),
-                  p["jade_light"] if (col + row) % 3 else p["jade_dark"],
+                  p["jade_light"] if (col + row) % 3 else p["jade_dark"], "head",
                   tilt=(.55 - .11 * row, 0, -.10 * col), sides=12, rows=7)
     tongue = [(-.043, -.268, .581, .009), (-.043, -.294, .571, .009), (-.045, -.327, .551, .008)]
-    f.sweep("Tongue", tongue, p["tongue"], sides=8, aspect=.70)
+    f.sweep("Tongue", tongue, p["tongue"], "tongue", sides=8, aspect=.70)
     for side in (-1, 1):
         f.sweep("Forked tongue tip", [tongue[-1], (-.046 + side * .012, -.347, .536, .005),
                                      (-.046 + side * .016, -.359, .533, .0015)],
-                p["tongue"], sides=7, aspect=.72)
-        # Curved ivory fangs
+                p["tongue"], "tongue", sides=7, aspect=.72)
         f.sweep("Snake fang", [
             (-.037 + side * .058, -.255, .586, .011),
             (-.037 + side * .061, -.265, .560, .007),
             (-.037 + side * .056, -.261, .538, .0015),
-        ], p["horn"], sides=8, steps=3)
-        # Flared hood frill behind head
+        ], p["horn"], "head", sides=8, steps=3)
         f.egg("Cobra hood frill", (-.018 + side * .128, -.068, .555), (.088, .032, .155),
-              p["jade_dark"], tilt=(.14, side * .22, side * -.28), sides=18, rows=12)
+              p["jade_dark"], "neck", tilt=(.14, side * .22, side * -.28), sides=18, rows=12)
         f.egg("Hood gold accent", (-.018 + side * .136, -.092, .565), (.052, .014, .105),
-              p["snake_belly"], tilt=(.14, side * .22, side * -.28), sides=14, rows=10)
-    # Dorsal ridge crest spines along raised neck
+              p["snake_belly"], "neck", tilt=(.14, side * .22, side * -.28), sides=14, rows=10)
     for idx in range(6):
         t = idx / 5
         f.egg("Dorsal spine", (.060 * (1 - t) - .015 * t, .018 - .040 * t, .26 + .34 * t),
-              (.014, .034, .022), p["jade_light"] if idx % 2 == 0 else p["jade_dark"],
+              (.014, .034, .022), p["jade_light"] if idx % 2 == 0 else p["jade_dark"], "neck",
               tilt=(-.35, 0, 0), sides=10, rows=6)
     return f
 
@@ -817,21 +839,23 @@ def transform(location=(0, 0, 0), rotation=(0, 0, 0), scale=(1, 1, 1)):
 
 
 def tiger_idle(theta):
+    # Heroic asymmetric wuxia stance: gentle contrapposto, breathing, lively scarf & tail
     sway = math.sin(theta)
     inhale = (1 - math.cos(theta)) / 2
+    breeze = math.sin(theta * 2 - .4)
     return {
-        "hips": transform(location=(0, .009 * inhale, 0)),
-        "chest": transform(rotation=(.018 * sway, 0, .018 * sway),
-                           scale=(1 + .018 * inhale, 1, 1 + .015 * inhale)),
-        "head": transform(rotation=(-.024 * sway, .018 * sway, -.024 * sway)),
-        "arm.L": transform(rotation=(.025 * sway, 0, .020 * inhale)),
-        "arm.R": transform(rotation=(.025 * sway, 0, -.020 * inhale)),
-        "leg.L": transform(),
-        "leg.R": transform(),
-        "foot.L": transform(),
-        "foot.R": transform(),
-        "scarf": transform(rotation=(.053 * sway, .059 * math.sin(theta - .3), 0)),
-        "tail": transform(rotation=(.056 * sway, .16 * math.sin(theta - .7), .060 * sway)),
+        "hips": transform(location=(.008 * sway, .012 * inhale, 0), rotation=(0, -.09 + .03 * sway, .02 * sway)),
+        "chest": transform(rotation=(.045 + .025 * inhale, .15 + .035 * sway, .03 * sway),
+                           scale=(1 + .022 * inhale, 1, 1 + .018 * inhale)),
+        "head": transform(rotation=(-.035 - .025 * sway, -.12 + .06 * math.sin(theta - .3), -.045 + .035 * sway)),
+        "arm.L": transform(rotation=(-.14 + .06 * sway, .08, -.16 - .03 * inhale)),
+        "arm.R": transform(rotation=(.24 - .05 * sway, -.12, .12 + .03 * inhale)),
+        "leg.L": transform(rotation=(-.08, 0, -.04)),
+        "leg.R": transform(rotation=(.06, 0, .04)),
+        "foot.L": transform(rotation=(.06, 0, 0)),
+        "foot.R": transform(rotation=(-.04, 0, 0)),
+        "scarf": transform(rotation=(.12 + .09 * breeze, .10 * math.sin(theta - .3), -.06 * sway)),
+        "tail": transform(rotation=(.08 + .08 * sway, .24 * math.sin(theta - .7), .10 * sway)),
     }
 
 
@@ -873,6 +897,126 @@ def tiger_attack(theta):
         "scarf": transform(rotation=(0.35 * thrust, 0.28 * strike, -0.18 * thrust)),
         "tail": transform(rotation=(0.15 * thrust, -0.35 * strike, 0.12 * thrust)),
     }
+
+
+def build_npc_rig(figure, mesh, rig_name, bone_defs, idle_fn, duration=64):
+    rig = bpy.data.armatures.new(f"{rig_name} bones")
+    actor = bpy.data.objects.new(rig_name, rig)
+    figure.collection.objects.link(actor)
+    bpy.context.view_layer.objects.active = actor
+    actor.show_in_front = True
+    rig.display_type = "STICK"
+    bpy.ops.object.mode_set(mode="EDIT")
+    for name, start, end, parent in bone_defs:
+        edit = rig.edit_bones.new(name)
+        edit.head, edit.tail = start, end
+        if parent:
+            edit.parent = rig.edit_bones[parent]
+    bpy.ops.object.mode_set(mode="OBJECT")
+    mesh.parent = actor
+    modifier = mesh.modifiers.new(f"{rig_name} skin", "ARMATURE")
+    modifier.object = actor
+    bpy.context.scene.render.fps = 24
+    actor.animation_data_create()
+    action = bpy.data.actions.new("idle")
+    actor.animation_data.action = action
+    for step in range(9):
+        phase = TAU * (step % 8) / 8
+        frame = step * duration // 8
+        for target, (location, rotation, scale) in idle_fn(phase).items():
+            part = actor.pose.bones[target]
+            part.rotation_mode = "XYZ"
+            part.location = location
+            part.rotation_euler = rotation
+            part.scale = scale
+            part.keyframe_insert("location", frame=frame, group=target)
+            part.keyframe_insert("rotation_euler", frame=frame, group=target)
+            part.keyframe_insert("scale", frame=frame, group=target)
+    actor.animation_data.action = None
+    track = actor.animation_data.nla_tracks.new()
+    track.name = "idle"
+    track.strips.new("idle", 0, action)
+    track.mute = False
+    bpy.context.scene.frame_start = 0
+    bpy.context.scene.frame_set(0)
+    return actor
+
+
+def rabbit_idle(theta):
+    sway = math.sin(theta)
+    inhale = (1 - math.cos(theta)) / 2
+    twitch = math.sin(theta * 2 + .5) ** 3
+    return {
+        "hips": transform(location=(0, .006 * inhale, 0), rotation=(0, .06 + .02 * sway, 0)),
+        "chest": transform(rotation=(.02 * inhale, -.05 + .025 * sway, .025 * sway),
+                           scale=(1 + .018 * inhale, 1, 1 + .016 * inhale)),
+        "head": transform(rotation=(-.025 + .035 * math.sin(theta - .4), .09 * sway, .055 + .04 * sway)),
+        "ear.L": transform(rotation=(.06 * sway, 0, -.08 - .11 * twitch)),
+        "ear.R": transform(rotation=(-.05 * sway, 0, .06 + .09 * math.sin(theta + .8))),
+        "arm.L": transform(rotation=(.04 * inhale, 0, .02 * sway)),
+        "arm.R": transform(rotation=(.04 * inhale, 0, -.02 * sway)),
+    }
+
+
+def rabbit_rig(figure, mesh):
+    return build_npc_rig(figure, mesh, "Rabbit", [
+        ("root", (0, 0, 0), (0, 0, .20), None),
+        ("hips", (0, 0, .20), (0, 0, .34), "root"),
+        ("chest", (0, 0, .34), (0, 0, .58), "hips"),
+        ("head", (0, -.01, .58), (0, -.01, .95), "chest"),
+        ("ear.L", (-.11, 0, .92), (-.16, -.02, 1.24), "head"),
+        ("ear.R", (.11, 0, .92), (.17, -.02, 1.24), "head"),
+        ("arm.L", (-.12, 0, .50), (-.14, -.13, .36), "chest"),
+        ("arm.R", (.12, 0, .50), (.14, -.13, .36), "chest"),
+    ], rabbit_idle, duration=72)
+
+
+def ox_idle(theta):
+    sway = math.sin(theta)
+    inhale = (1 - math.cos(theta)) / 2
+    return {
+        "hips": transform(location=(.008 * sway, .009 * inhale, 0), rotation=(0, -.08 + .02 * sway, .015 * sway)),
+        "chest": transform(rotation=(.025 * inhale, .10 + .03 * sway, .02 * sway),
+                           scale=(1 + .024 * inhale, 1, 1 + .018 * inhale)),
+        "head": transform(rotation=(.03 * math.sin(theta - .5), -.08 + .07 * sway, -.035 * sway)),
+        "arm.L": transform(rotation=(-.08 + .05 * sway, 0, -.08 - .02 * inhale)),
+        "arm.R": transform(rotation=(.14 - .04 * sway, -.06, .06 + .02 * inhale)),
+    }
+
+
+def ox_rig(figure, mesh):
+    return build_npc_rig(figure, mesh, "Ox", [
+        ("root", (0, 0, 0), (0, 0, .22), None),
+        ("hips", (0, 0, .22), (0, 0, .38), "root"),
+        ("chest", (0, 0, .38), (0, 0, .66), "hips"),
+        ("head", (0, 0, .66), (0, 0, 1.02), "chest"),
+        ("arm.L", (-.16, .01, .58), (-.28, -.05, .38), "chest"),
+        ("arm.R", (.16, .01, .58), (.28, -.05, .38), "chest"),
+    ], ox_idle, duration=80)
+
+
+def snake_idle(theta):
+    weave = math.sin(theta)
+    counter = math.sin(theta - 1.1)
+    inhale = (1 - math.cos(theta)) / 2
+    flick = max(0.0, math.sin(theta * 2.0)) ** 4
+    return {
+        "coil": transform(scale=(1 + .028 * inhale, 1 + .028 * inhale, 1 - .012 * inhale)),
+        "neck": transform(rotation=(.06 * math.cos(theta), .18 * weave, .14 * weave)),
+        "head": transform(rotation=(-.08 * math.cos(theta), -.16 * counter, -.10 * counter)),
+        "tongue": transform(location=(0, -.035 * flick, 0), rotation=(.18 * math.sin(theta * 4), 0, 0),
+                            scale=(1, .55 + .65 * flick, 1)),
+    }
+
+
+def snake_rig(figure, mesh):
+    return build_npc_rig(figure, mesh, "Snake", [
+        ("root", (0, 0, 0), (0, 0, .14), None),
+        ("coil", (0, 0, .14), (0, 0, .24), "root"),
+        ("neck", (.04, 0, .22), (-.02, -.08, .58), "coil"),
+        ("head", (-.02, -.08, .58), (-.03, -.24, .65), "neck"),
+        ("tongue", (-.04, -.27, .58), (-.05, -.36, .53), "head"),
+    ], snake_idle, duration=56)
 
 
 def palette():
@@ -995,6 +1139,7 @@ def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     MODELS.mkdir(parents=True, exist_ok=True)
     colors = palette()
+    rigs = {"tiger": tiger_rig, "rabbit": rabbit_rig, "ox": ox_rig, "snake": snake_rig}
     for index, (name, builder) in enumerate((
         ("tiger", make_tiger), ("rabbit", make_rabbit), ("ox", make_ox), ("snake", make_snake),
     )):
@@ -1004,7 +1149,7 @@ def main():
         for vertex in mesh.data.vertices:
             vertex.co.z -= lowest
         mesh.data.update()
-        rig = tiger_rig(figure, mesh) if name == "tiger" else None
+        rig = rigs[name](figure, mesh)
         export(figure, name, rig)
         actor = rig or mesh
         actor.location.x = (index - 1.5) * .95

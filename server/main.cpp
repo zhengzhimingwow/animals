@@ -57,6 +57,14 @@ public:
 
     void start() { accept(); schedule_tick(); }
 
+    void reload() {
+        const auto update = world_.reload();
+        if (!update.is_null()) {
+            std::cout << "Reloaded world configuration from disk." << std::endl;
+            broadcast(update);
+        }
+    }
+
     void stop() {
         stopping_ = true;
         listener_.close();
@@ -301,6 +309,17 @@ int main(int argc, char** argv) {
         Hub hub(context, {address, static_cast<unsigned short>(port)}, world, tokens);
         net::signal_set signals(context, SIGINT, SIGTERM);
         signals.async_wait([&hub](beast::error_code error, int) { if (!error) hub.stop(); });
+#ifdef SIGHUP
+        net::signal_set reload_signals(context, SIGHUP);
+        std::function<void()> watch_reload = [&]() {
+            reload_signals.async_wait([&](beast::error_code error, int) {
+                if (error) return;
+                hub.reload();
+                watch_reload();
+            });
+        };
+        watch_reload();
+#endif
         hub.start();
         std::cout << "Ferry world ready on " << address.to_string() << ':' << port << std::endl;
         context.run();

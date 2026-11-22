@@ -29,11 +29,11 @@ def login(socket, name):
     return expect(socket, "joined")
 
 
-def move(socket, count, direction):
+def move(socket, count, dx=0, dy=0):
     for _ in range(count):
-        send(socket, type="move", dx=direction, dy=0)
+        send(socket, type="move", dx=dx, dy=dy)
         expect(socket, "moved")
-        time.sleep(0.17)
+        time.sleep(0.25)
 
 
 if sys.argv[2:] == ["--resume"]:
@@ -64,14 +64,15 @@ with connect(URL, open_timeout=5) as player_a, connect(URL, open_timeout=5) as p
     send(player_a, type="interact", target="apothecary", seq=12)
     dlg = expect(player_a, "dialogue")
     assert dlg["player"]["quest"] == "search" and dlg["seq"] == 12
-    move(player_a, 7, 1)
+    move(player_a, 11, dx=1)
+    move(player_a, 3, dy=1)
     moved_event = expect(player_b, "event",
-        lambda message: message["event"] == "player_moved" and message["id"] == "test-a" and message["x"] == 9)
-    assert moved_event["facing"] == "right"
+        lambda message: message["event"] == "player_moved" and message["id"] == "test-a" and message["x"] == 14 and message["y"] == 7)
+    assert moved_event["facing"] == "down"
 
     send(player_a, type="interact", target="reed_trail")
     assert expect(player_a, "dialogue")["player"]["quest"] == "hunt"
-    move(player_a, 1, 1)
+    move(player_a, 1, dx=1)
     for health in (2, 1, 0):
         send(player_a, type="attack", target="reed_snake", damage=100, id="test-b")
         assert expect(player_a, "hit")["hp"] == health
@@ -80,7 +81,8 @@ with connect(URL, open_timeout=5) as player_a, connect(URL, open_timeout=5) as p
     expect(player_b, "event",
         lambda message: message["event"] == "player_attacked" and message["id"] == "test-a" and not message["alive"])
 
-    move(player_a, 8, -1)
+    move(player_a, 3, dy=-1)
+    move(player_a, 12, dx=-1)
     for _ in range(2):
         send(player_a, type="interact", target="apothecary")
         assert expect(player_a, "dialogue")["player"] == {"quest": "done", "gall": 0, "coins": 12}

@@ -25,6 +25,7 @@ public:
     void request(const std::string& id, const Json& message, Callback done);
     void leave(const std::string& id, LeaveCallback done);
     Json tick();
+    Json reload();
     Json snapshot();
 
 private:

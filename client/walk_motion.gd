@@ -1,9 +1,9 @@
 extends RefCounted
 ## A confirmed world step is interpolated; turns stay on the edges of the grid.
 
-const STEP_SECONDS := 0.162
-const CORRECTION_SECONDS := 0.075
-const WALK_RELEASE_SECONDS := 0.055
+const STEP_SECONDS := 0.245
+const CORRECTION_SECONDS := 0.10
+const WALK_RELEASE_SECONDS := 0.075
 const MAX_PENDING_STEPS := 4
 
 var position: Vector2
